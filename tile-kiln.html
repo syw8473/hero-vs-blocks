@@ -45,6 +45,7 @@ canvas{display:block}
 .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
   background:rgba(10,30,32,.82);border-radius:6px;text-align:center;padding:16px}
 .overlay[hidden]{display:none}
+.np{margin-top:6px;padding:1px 6px;border-radius:4px;background:rgba(20,16,28,.66);color:#f4efe4;font:700 11px/15px var(--f-body);white-space:nowrap}   /* now playing, under the board */
 #pausebg{position:absolute;inset:0;width:100%;height:100%;border-radius:6px;image-rendering:pixelated;display:none;z-index:0}
 .overlay>*:not(#pausebg){position:relative;z-index:1}
 /* paused: the night campfire scene shows through, text sits up in the starry sky */
@@ -90,12 +91,13 @@ canvas{-webkit-tap-highlight-color:transparent}
 @media (max-width:600px),(hover:none){
   body{padding-block:6px;padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
   .wrap{--col:76px;display:grid;grid-template-columns:var(--col) minmax(0,1fr) var(--col);
-    grid-template-rows:auto auto auto 1fr auto;
-    grid-template-areas:"lane lane lane" "hold board next" "stats board pills" ". board ." "ctrl ctrl ctrl";
+    grid-template-rows:auto auto auto 1fr auto auto;
+    grid-template-areas:"lane lane lane" "hold board next" "stats board pills" ". board ." ". np ." "ctrl ctrl ctrl";
     gap:8px 6px;align-content:space-between;justify-items:center;align-items:start}
   .game,.side,.stage{display:contents}
   #lane{grid-area:lane}
   .board-box{grid-area:board}
+  .np{grid-area:np;margin-top:0}
   #hold-p{grid-area:hold} .stats{grid-area:stats} #next-p{grid-area:next}
   .panel{padding:6px;width:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center}
   .stats{gap:6px;align-items:stretch}
@@ -149,6 +151,7 @@ canvas{-webkit-tap-highlight-color:transparent}
         </div>
       </div>
     </div>
+    <div class="np" id="nowplaying" hidden></div>
     </div>
     <div class="side">
       <div class="panel" id="next-p"><div class="label">接下來</div><canvas id="next"></canvas></div>
@@ -391,7 +394,7 @@ function layout(){
   if (narrow) {   // phones: lane spans the full width; the board gets what the two side columns leave
     const colW = parseFloat(getComputedStyle(wr).getPropertyValue("--col")) || 76;
     laneW = wr.clientWidth; PX = laneW >= 340 ? 4 : 3; laneH = PX * 33;
-    availW = laneW - 2 * colW - 16; availH = wr.clientHeight - laneH - $("touch").offsetHeight - 24;
+    availW = laneW - 2 * colW - 16; availH = wr.clientHeight - laneH - $("touch").offsetHeight - 15 - 32;   // 15 = now-playing chip
   } else {
     PX = 3; laneH = 100;
     availH = g.clientHeight - 10 - laneH - 6; availW = g.clientWidth - 10 - 2 * 120 - 32;
@@ -770,14 +773,9 @@ function updateLane(dt){
       lx.fillRect(Math.round(x0 + (cw - rowW) / 2 + (i % 5) * 11), y0 + 15 + r * 9, 8, 6);
     }
   }
-  // now playing: top centre, same chip and lettering as the monster name
-  if (musicOn && trackIdx >= 0) {
-    const tn = "♪ " + (mBoss ? BOSS_TRACKS[bossIdx].name : TRACKS[trackIdx].name);
-    lx.textBaseline = "top"; lx.font = '700 11px "Noto Sans TC", system-ui, sans-serif';
-    const cw = lx.measureText(tn).width + 10, x0 = Math.round(W / 2 - cw / 2);
-    lx.fillStyle = "rgba(20,16,28,.66)"; lx.beginPath(); lx.roundRect(x0, 1, cw, 15, 4); lx.fill();
-    lx.textAlign = "center"; lx.fillStyle = "#f4efe4"; lx.fillText(tn, W / 2, 2); lx.textAlign = "start";
-  }
+  // now playing: shown in the chip under the board (hidden while music is off or before the first stage starts)
+  const np = $("nowplaying"), tn = musicOn && trackIdx >= 0 ? "♪ " + (mBoss ? BOSS_TRACKS[bossIdx].name : TRACKS[trackIdx].name) : "";
+  if (np.textContent !== tn) { np.textContent = tn; np.hidden = !tn; }
   // battle callouts
   if (laneMsg) {
     laneMsg.t -= dt;
@@ -798,7 +796,7 @@ function sfxBoss(){   // low, ominous three-note sting
 
 let phoneLayout = false, worldKey = "";
 function drawWorld(){   // full-screen scene whose horizon lines up with the lane's floor
-  const cv = $("worldbg"), vw = innerWidth, vh = innerHeight, r = lc.getBoundingClientRect();
+  const cv = $("worldbg"), vw = innerWidth, vh = Math.max(innerHeight, document.documentElement.clientHeight, screen.height), r = lc.getBoundingClientRect();
   const gw = Math.ceil(vw / PX) + 1, gh = Math.ceil(vh / PX) + 1;
   const gy = Math.round((r.top + laneH - 6) / PX), name = sceneName(), key = [name, gw, gh, gy].join();
   if (key === worldKey) return;
