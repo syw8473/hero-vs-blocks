@@ -316,7 +316,7 @@ function reset(){
   grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   bag = []; queue = [nextFromBag(), nextFromBag(), nextFromBag()];
   holdType = null; canHold = true; score = 0; lines = 0; level = 1;
-  dropAcc = 0; clearing = null; state = "play"; mStep = 0;
+  dropAcc = 0; clearing = null; state = "play"; mStep = 0; trackLv = 0;
   resetBattle();
   $("overlay").hidden = true;
   advance(); updateHUD();
@@ -1280,27 +1280,10 @@ $("sound-btn").addEventListener("click", () => {
 });
 updateSoundBtn();
 
-/* ---------- 8-bit background music: original, elegant & relaxed waltz (3/4, 16-bar loop) ---------- */
+/* ---------- 8-bit battle music: five original field battle themes + a boss theme (pulse lead, triangle bass, noise drums) ---------- */
 const MVOL = .09;
 let mGain = null, mBus = null, pulseWave = null, musicOn = true, mStep = 0, mNext = 0, mTimer = null;
 try { musicOn = localStorage.getItem("tilekiln-music") !== "off"; } catch(e) {}
-// one chord per bar: [bass root, then three voicing tones] (MIDI)
-// Cmaj7 Am7 Dm7 G7 | Cmaj7 Em7 Fmaj7 G | Am7 Em7 Fmaj7 Cmaj7/E | Dm7 G7 Cmaj7 Cmaj7
-const CHORDS = [
-  [48,55,59,64], [45,52,55,60], [50,57,60,65], [43,50,53,59],
-  [48,55,59,64], [52,59,62,67], [41,48,52,57], [43,50,55,59],
-  [45,52,55,60], [52,59,62,67], [41,48,52,57], [40,48,55,59],
-  [50,57,60,65], [43,50,53,59], [48,55,59,64], [48,55,59,64]
-];
-// lyrical melody, per bar as [note, length in 8ths] (0 = rest); every bar = 6 eighths
-const MEL_BARS = [
-  [[76,3],[74,1],[76,2]], [[72,4],[69,2]], [[77,3],[76,1],[74,2]], [[71,4],[74,2]],
-  [[79,3],[77,1],[76,2]], [[74,2],[76,2],[79,2]], [[81,4],[79,1],[77,1]], [[74,6]],
-  [[72,3],[74,1],[76,2]], [[79,4],[76,2]], [[77,2],[76,2],[72,2]], [[76,4],[79,2]],
-  [[81,3],[79,1],[77,2]], [[74,2],[71,2],[74,2]], [[72,6]], [[0,6]]
-];
-const MEL = []; MEL_BARS.forEach(bar => bar.forEach(([m, l]) => { MEL.push([m, l]); for (let i = 1; i < l; i++) MEL.push(null); }));
-const ARP = [0, 1, 2, 3, 2, 1];   // gentle up-and-down arpeggio across each bar
 function pulse(){   // soft 25% pulse wave, the classic handheld lead tone
   if (!pulseWave) {
     const n = 32, re = new Float32Array(n), im = new Float32Array(n);
@@ -1327,13 +1310,39 @@ function mnote(freq, t, dur, vol, lead){
   g.gain.setTargetAtTime(0, t + dur, .06);
   o.connect(g).connect(lead ? musicBus() : mGain); o.start(t); o.stop(t + dur + .4);
 }
-/* boss battle theme: E minor, 152 bpm in 4/4, driving octave bass, a restless lead and a drum kit (8 bars of 8ths) */
-let mBoss = false;
-const BOSS_BASS = [40, 40, 41, 40, 36, 38, 35, 35];   // E E F E C D B B — the E/F semitone rub keeps it uneasy
-const BOSS_MEL = [
-  [76, 0, 79, 0, 77, 0, 76, 75], [76, 0, 0, 0, 71, 0, 0, 0], [77, 0, 81, 0, 80, 0, 77, 76], [75, 0, 0, 0, 71, 0, 0, 0],
-  [84, 0, 83, 0, 81, 0, 79, 77], [79, 0, 77, 0, 76, 0, 74, 0], [76, 76, 77, 77, 80, 80, 81, 81], [83, 0, 0, 0, 71, 0, 75, 0]
+/* Each track is 8 bars of 8th notes. bass: a root per bar (played in the track's bass pattern) or an explicit 8-note bar.
+   mel: 8 slots per bar — a MIDI note, 0 = rest, 1 = hold the previous note. All tunes are original, written in the
+   style of classic 8-bit RPG battle music: fast minor keys, driving bass, sequences and chromatic runs. */
+const BASS_STYLE = { octave: [0, 12, 0, 12, 0, 12, 0, 12], gallop: [0, 0, 12, 0, 0, 12, 7, 12], pedal: [0, 0, 12, 0, 0, 12, 10, 12] };
+const TRACKS = [
+  { name: "出擊！", bpm: 160, style: "octave", stab: true,                        // A minor march
+    bass: [45, 45, 41, 43, 45, 45, 40, 40],
+    mel: [[69, 1, 72, 1, 76, 1, 75, 76], [77, 1, 76, 74, 72, 1, 71, 1], [72, 1, 74, 1, 76, 1, 77, 1], [79, 1, 1, 1, 74, 1, 71, 1],
+          [69, 72, 76, 81, 1, 1, 80, 81], [83, 1, 81, 1, 79, 1, 77, 76], [76, 1, 77, 1, 76, 1, 75, 1], [76, 1, 1, 1, 0, 0, 64, 68]] },
+  { name: "疾風迴廊", bpm: 176, style: "gallop", drums: true,                     // D minor, galloping and fast
+    bass: [38, 38, 34, 36, 38, 38, 33, 33],
+    mel: [[74, 76, 77, 79, 81, 1, 77, 1], [74, 1, 81, 1, 82, 81, 79, 77], [77, 1, 74, 1, 70, 1, 74, 77], [79, 1, 76, 1, 72, 1, 76, 79],
+          [81, 1, 86, 1, 85, 1, 81, 1], [82, 81, 79, 77, 76, 74, 73, 74], [76, 1, 73, 1, 69, 1, 73, 76], [74, 1, 1, 1, 0, 69, 73, 76]] },
+  { name: "鋼之行軍", bpm: 140, style: "octave",                                  // E minor, baroque walking bass
+    bass: [[40, 47, 52, 47, 40, 47, 52, 47], [36, 43, 48, 43, 36, 43, 48, 43], [38, 45, 50, 45, 38, 45, 50, 45], [35, 42, 47, 42, 35, 42, 47, 51],
+           [40, 47, 52, 47, 45, 52, 57, 52], [43, 50, 55, 50, 42, 49, 54, 49], [45, 52, 57, 52, 47, 54, 59, 54], [40, 47, 52, 47, 40, 0, 0, 0]],
+    mel: [[76, 1, 79, 78, 76, 1, 71, 1], [72, 1, 76, 74, 72, 1, 67, 1], [74, 1, 78, 76, 74, 1, 69, 1], [71, 1, 75, 1, 78, 1, 83, 1],
+          [79, 1, 1, 78, 76, 1, 81, 1], [79, 1, 78, 1, 76, 1, 74, 1], [72, 74, 76, 78, 79, 81, 83, 1], [76, 1, 1, 1, 1, 1, 0, 0]] },
+  { name: "暗雲", bpm: 150, style: "pedal", stab: true,                           // C minor, brooding and chromatic
+    bass: [36, 36, 32, 31, 36, 36, 37, 31],
+    mel: [[72, 1, 75, 1, 74, 1, 72, 71], [72, 1, 1, 1, 67, 1, 68, 1], [68, 1, 72, 1, 75, 1, 77, 1], [74, 1, 1, 1, 71, 1, 67, 1],
+          [84, 1, 83, 1, 82, 1, 81, 1], [80, 1, 79, 1, 78, 1, 77, 1], [75, 1, 77, 1, 78, 1, 79, 1], [79, 1, 1, 1, 0, 0, 71, 74]] },
+  { name: "勇者之刃", bpm: 168, style: "octave", drums: true, stab: true,          // G minor, heroic leaps
+    bass: [43, 43, 39, 41, 43, 43, 38, 38],
+    mel: [[79, 1, 1, 74, 79, 1, 82, 1], [81, 1, 79, 1, 77, 1, 74, 1], [75, 1, 79, 1, 82, 1, 87, 1], [86, 1, 1, 1, 84, 1, 82, 1],
+          [79, 81, 82, 84, 86, 1, 82, 1], [79, 1, 74, 1, 70, 1, 74, 79], [78, 1, 1, 1, 81, 1, 1, 1], [79, 1, 1, 1, 0, 74, 78, 81]] },
 ];
+// boss theme: E minor, 152 bpm, driving octave bass, restless lead, full drum kit — the E/F semitone rub keeps it uneasy
+const BOSS_TRACK = { name: "魔王戰", bpm: 152, style: "octave", bassWave: "square", drums: true, stab: true,
+  bass: [40, 40, 41, 40, 36, 38, 35, 35],
+  mel: [[76, 0, 79, 0, 77, 0, 76, 75], [76, 0, 0, 0, 71, 0, 0, 0], [77, 0, 81, 0, 80, 0, 77, 76], [75, 0, 0, 0, 71, 0, 0, 0],
+        [84, 0, 83, 0, 81, 0, 79, 77], [79, 0, 77, 0, 76, 0, 74, 0], [76, 76, 77, 77, 80, 80, 81, 81], [83, 0, 0, 0, 71, 0, 75, 0]] };
+let mBoss = false, trackLv = 0, trackIdx = -1;
 function bnote(freq, t, dur, vol, type){
   const o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(freq, t);
@@ -1353,30 +1362,29 @@ function drum(t, kind){
   g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + d);
   n.connect(fl).connect(g).connect(mGain); n.start(t); n.stop(t + d + .02);
 }
-function bossTick(){
-  const step = 60 / 152 / 2;
+function trackTick(tr){
+  const step = 60 / tr.bpm / 2;
   while (mNext < actx.currentTime + .15) {
-    const i = mStep % 64, bar = i >> 3, j = i & 7, root = BOSS_BASS[bar], m = BOSS_MEL[bar][j];
-    bnote(N(root + (j % 2 ? 12 : 0)), mNext, step * .8, .3, "square");    // driving octave bass
-    if (m) mnote(N(m), mNext, step * .85, .42, true);                     // tense lead
-    if (j === 0) [0, 3, 7].forEach(o => bnote(N(root + 24 + o), mNext, step * 1.6, .07, "sawtooth"));   // minor stab on each bar
-    drum(mNext, j % 4 === 0 ? "kick" : j % 4 === 2 ? "snare" : "hat");
+    const i = mStep % 64, bar = i >> 3, j = i & 7, b = tr.bass[bar], mel = tr.mel[bar];
+    const root = Array.isArray(b) ? b[0] : b, bn = Array.isArray(b) ? b[j] : b + BASS_STYLE[tr.style][j];
+    if (bn) bnote(N(bn), mNext, step * .8, tr.bassWave ? .3 : .55, tr.bassWave || "triangle");   // driving bass
+    const m = mel[j];
+    if (m > 1) { let len = 1; while (j + len < 8 && mel[j + len] === 1) len++; mnote(N(m), mNext, step * (len - .1), .42, true); }   // lead
+    if (tr.stab && j === 0) [0, 3, 7].forEach(o => bnote(N(root + 24 + o), mNext, step * 1.6, .06, "sawtooth"));   // minor stab each bar
+    if (tr.drums) drum(mNext, j % 4 === 0 ? "kick" : j % 4 === 2 ? "snare" : "hat");
+    else if (j % 4 === 2) drum(mNext, "hat");   // just a light tick, like the old consoles' noise channel
     mNext += step; mStep++;
   }
 }
 function musicTick(){
   const boss = !!(foe && foe.boss && state === "play");
-  if (boss !== mBoss) { mBoss = boss; mStep = 0; }   // switch tracks from the top of the new tune
-  if (boss) { bossTick(); return; }
-  const bpm = Math.min(108, 92 + (level - 1) * 2), step = 60 / bpm / 2;   // relaxed waltz, only barely quickens with level
-  while (mNext < actx.currentTime + .15) {
-    const i = mStep % 96, bar = (i / 6) | 0, j = i % 6, ch = CHORDS[bar], m = MEL[i];
-    const tones = [ch[0] + 12, ch[1], ch[2], ch[3]];
-    if (m && m[0]) mnote(N(m[0]), mNext, step * m[1] * .95, .45, true);   // melody
-    mnote(N(tones[ARP[j]]), mNext, step * 1.6, .3, false);               // arpeggio
-    if (j === 0) mnote(N(ch[0]), mNext, step * 5.5, .6, false);           // long bass note per bar
-    mNext += step; mStep++;
+  if (level !== trackLv) {   // a new stage picks a different field theme at random, kept until the next stage
+    trackLv = level;
+    let k; do k = Math.random() * TRACKS.length | 0; while (k === trackIdx);
+    trackIdx = k; if (!boss) mStep = 0;
   }
+  if (boss !== mBoss) { mBoss = boss; mStep = 0; }   // the boss theme and the field theme each start from the top
+  trackTick(boss ? BOSS_TRACK : TRACKS[trackIdx]);
 }
 function musicSync(){
   const should = musicOn && state === "play" && actx && actx.state === "running" && !document.hidden;
