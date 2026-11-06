@@ -678,19 +678,31 @@ function spawnFoe(){
   foe = { name: prefix + def[0], boss, hp: boss ? remain : 1, max: boss ? remain : 1, spr, white: whiteOf(spr), pal, enter: 1, hit: 0, die: 0, t: 0 };
   if (boss && state === "play") { laneMsg = { text: "魔王出現！", t: 1300 }; sfxBoss(); }
 }
-const ATK_MS = 800;
+const SWING_MS = 400;   // one sword stroke; clearing n lines chains n strokes
 function battleHit(n, leveled){
-  hero.atk = ATK_MS; hero.sparked = false;
-  // special-move name in a burst bubble, shown in the left third while the hero is over at the monster
-  laneMsg = { text: ELEMS[clearElem].name, ink: ELEMS[clearElem].ink, sub: n > 1 ? `×${n}` : "", bubble: true, t: 560, delay: 140, age: 0, seed: Math.random() * 1e9 | 0 };
+  if (foe && foe.pendingKill) { foe.pendingKill = false; foe.die = 650; foe.hp = foe.hpTarget; }   // a new clear before the last combo finished
+  hero.swings = n; hero.combo = n * SWING_MS; hero.atk = hero.combo; hero.lastSwing = -1; hero.sparked = false;
+  // special-move name in a burst bubble, shown in the left third while the hero is over at the monster, for the whole combo
+  laneMsg = { text: ELEMS[clearElem].name, ink: ELEMS[clearElem].ink, sub: n > 1 ? `×${n}` : "", bubble: true,
+    t: Math.max(420, hero.combo * .85 - 90), delay: 90, age: 0, seed: Math.random() * 1e9 | 0 };
   if (!foe || foe.die > 0) return;
-  foe.hit = 280;
-  foe.hp = (leveled || !foe.boss) ? 0 : Math.max(0, stageEnd(level) - lines);
-  if (foe.hp <= 0) {
-    foe.die = 650; kills++;
+  foe.hpTarget = (leveled || !foe.boss) ? 0 : Math.max(0, stageEnd(level) - lines);
+  foe.hitsLeft = n;   // HP drops one pip per stroke; the monster falls on the last stroke
+  if (foe.hpTarget <= 0) {
+    foe.pendingKill = true; kills++;
     if (leveled) lvKills = 0; else lvKills++;
     if (foe.boss) laneMsg.sub = "魔王擊破！";
   } else laneMsg.sub = `-${n}`;
+}
+function strokeLands(){   // called once per stroke as the blade hits
+  if (!foe || foe.die > 0) return;
+  foe.hit = 280;
+  tone(N(98), 0, .035, "square", .035);   // short metallic tick per stroke
+  if (foe.hitsLeft > 0) {
+    foe.hitsLeft--;
+    if (foe.hp > foe.hpTarget) foe.hp--;
+    if (foe.hitsLeft === 0) { foe.hp = foe.hpTarget; if (foe.pendingKill) { foe.pendingKill = false; foe.die = 650; } }
+  }
 }
 function drawBurst(m, W, H){
   const pop = Math.min(1, m.age / 110), sc = pop < 1 ? .3 + .7 * pop + .25 * Math.sin(pop * Math.PI) : 1;
@@ -764,10 +776,12 @@ function updateLane(dt){
   } else {
     if (hero.atk > 0) {
       hero.atk -= dt;
-      const p = 1 - Math.max(0, hero.atk) / ATK_MS, reach = foeBox ? Math.max(homeX, foeBox.x - hw - 2) : homeX + 24;
-      const k = p < .3 ? p / .3 : p < .75 ? 1 : 1 - (p - .75) / .25;
+      // the combo: dash in on the first stroke, keep striking at the monster, step back after the last one
+      const T = hero.combo, el = T - Math.max(0, hero.atk), si = Math.min(hero.swings - 1, el / SWING_MS | 0), p = Math.min(1, (el - si * SWING_MS) / SWING_MS);
+      const reach = foeBox ? Math.max(homeX, foeBox.x - hw - 2) : homeX + 24, inT = SWING_MS * .3, outT = SWING_MS * .25;
+      const k = el < inT ? el / inT : el > T - outT ? Math.max(0, (T - el) / outT) : 1;
       hx = Math.round((homeX + k * (reach - homeX)) / PX) * PX;
-      if (p < .3) hy -= Math.round(2 * p / .3) * PX;   // jump while raising the sword
+      if (p < .3) hy -= Math.round(2 * p / .3) * PX;   // little jump as the sword goes up
       else if (p < .5) hy -= 2 * PX;
       spr = null;   // drawn below with the sword at its swing angle
       const ang = swingAngle(p), cx = hx + SWORD_PIVOT[0] * PX, cy = hy + SWORD_PIVOT[1] * PX;
@@ -776,15 +790,16 @@ function updateLane(dt){
       if (p > .3 && p < .48) drawArc(lx, cx, cy, PX, 135, ang, clearElem, .95);
       else if (p >= .48 && p < .78) drawArc(lx, cx, cy, PX, 135, -55, clearElem, .95 * (1 - (p - .48) / .3));
       drawSword(lx, hx, hy, PX, ang, clearElem);
-      if (p > .44 && !hero.sparked) {   // shards burst off the outer rim of the crescent
-        hero.sparked = true;
+      if (si !== hero.lastSwing) { hero.lastSwing = si; hero.sparked = false; }
+      if (p > .44 && !hero.sparked) {   // the blade lands: shards burst off the crescent and the monster takes the hit
+        hero.sparked = true; strokeLands();
         const C = BLADES[clearElem].arc;
-        for (let i = 0; i < 26; i++) {
+        for (let i = 0; i < 20; i++) {
           const a = (-55 + Math.random() * 150) * Math.PI / 180, ex = cx + Math.cos(a) * ARC_RX * PX, ey = cy - Math.sin(a) * ARC_RY * PX;
-          laneParts.push({ x: ex, y: ey, vx: Math.cos(a) * (60 + Math.random() * 110), vy: -Math.sin(a) * (40 + Math.random() * 80) - (clearElem === "fire" || clearElem === "holy" ? 60 : 0), c: C[i % 2], life: 420 + Math.random() * 300 });
+          laneParts.push({ x: ex, y: ey, vx: Math.cos(a) * (60 + Math.random() * 110), vy: -Math.sin(a) * (40 + Math.random() * 80) - (clearElem === "fire" || clearElem === "holy" ? 60 : 0), c: C[i % 2], life: 380 + Math.random() * 260 });
         }
       }
-    }
+    } else if (foe && foe.pendingKill) { foe.pendingKill = false; foe.hp = foe.hpTarget; foe.die = 650; }   // safety: never leave a kill hanging
     if (spr) lx.drawImage(spr, hx, hy, hw, hh);
   }
   // bits
