@@ -55,6 +55,7 @@ canvas{display:block}
 .stage{display:flex;flex-direction:column;align-items:center;gap:6px}
 #fx{position:absolute;left:0;top:0;pointer-events:none}
 #lane{image-rendering:pixelated;border-radius:6px}
+#worldbg{position:fixed;left:0;top:0;z-index:-1;display:none;image-rendering:pixelated;pointer-events:none}
 .ghost{padding:8px 14px;font-size:13px;color:var(--clay-dim);background:transparent}
 .overlay h2{font-family:var(--f-display);font-size:22px;margin:0;color:var(--clay)}
 .overlay p{margin:0;font-size:13px;color:var(--clay-dim);max-width:22ch}
@@ -108,6 +109,10 @@ canvas{-webkit-tap-highlight-color:transparent}
   .dpad button,.hub{background:#2e4549}
   .ab{margin-right:6px}
   .ghost{white-space:nowrap;padding:6px 10px;font-size:12px}
+  /* the battle scene fills the whole screen; panels, board and buttons sit on top of its ground */
+  html{background:#0e2a2d} body{background:transparent} #worldbg{display:block}
+  .cap{color:#f4efe4;text-shadow:0 1px 0 #000,0 0 4px #000}
+  .panel{box-shadow:0 2px 0 rgba(0,0,0,.35)}
   .keys-panel,header,.brand,.grille{display:none}   /* last, so .panel's display:flex can't bring the key list back */
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -158,6 +163,7 @@ canvas{-webkit-tap-highlight-color:transparent}
       </div>
     </div>
   </div>
+  <canvas id="worldbg" aria-hidden="true"></canvas>
   <div class="touch" id="touch">
     <div class="brand" aria-hidden="true">勇者鬥磚塊<small>POCKET QUEST</small></div>
     <div class="cluster pad-l">
@@ -384,6 +390,7 @@ function layout(){
     availH = g.clientHeight - 10 - laneH - 6; availW = g.clientWidth - 10 - 2 * 120 - 32;
   }
   cell = Math.max(10, Math.min(34, Math.floor(Math.min(availH / ROWS, availW / COLS))));
+  phoneLayout = narrow; worldKey = "";
   if (!narrow) laneW = COLS * cell;
   sizeCanvas(bc, COLS * cell, ROWS * cell);
   sizeCanvas(fc, COLS * cell, ROWS * cell);
@@ -675,7 +682,8 @@ function updateLane(dt){
   const W = laneW, H = laneH, s = dt / 1000, floor = H - 6;
   hero.t += dt;
   lx.imageSmoothingEnabled = false;
-  lx.drawImage(backdrop(), 0, 0, Math.ceil(W / PX) * PX, Math.ceil(H / PX) * PX);       // field / castle backdrop
+  if (phoneLayout) { lx.clearRect(0, 0, W, H); drawWorld(); }   // phones: the scene is painted full-screen behind everything; the lane stays see-through
+  else lx.drawImage(backdrop(), 0, 0, Math.ceil(W / PX) * PX, Math.ceil(H / PX) * PX);       // field / castle backdrop
   // monster
   if (!foe && state !== "over") { nextFoeT -= dt; if (nextFoeT <= 0) spawnFoe(); }
   foeBox = null;
@@ -767,6 +775,23 @@ function sfxBoss(){   // low, ominous three-note sting
   [[45, 0], [44, .18], [40, .36]].forEach(([m, s]) => { tone(N(m), s, .2, "square", .07); tone(N(m - 12), s, .2, "triangle", .14); });
 }
 
+let phoneLayout = false, worldKey = "";
+function drawWorld(){   // full-screen scene whose horizon lines up with the lane's floor
+  const cv = $("worldbg"), vw = innerWidth, vh = innerHeight, r = lc.getBoundingClientRect();
+  const gw = Math.ceil(vw / PX) + 1, gh = Math.ceil(vh / PX) + 1;
+  const gy = Math.round((r.top + laneH - 6) / PX), name = sceneName(), key = [name, gw, gh, gy].join();
+  if (key === worldKey) return;
+  worldKey = key;
+  const small = document.createElement("canvas"); small.width = gw; small.height = gh;
+  paintScene(small.getContext("2d"), name, gw, gh, gy);
+  cv.width = gw * PX * dpr; cv.height = gh * PX * dpr; cv.style.width = gw * PX + "px"; cv.style.height = gh * PX + "px";
+  const x = cv.getContext("2d"); x.imageSmoothingEnabled = false; x.drawImage(small, 0, 0, cv.width, cv.height);
+  // dim everything below the battle lane so the board and buttons stand out; soft fade at the top edge
+  const y0 = (r.top + laneH + 4) * dpr, fade = 26 * dpr, g = x.createLinearGradient(0, y0, 0, y0 + fade);
+  g.addColorStop(0, "rgba(6,12,18,0)"); g.addColorStop(1, "rgba(6,12,18,.5)");
+  x.fillStyle = g; x.fillRect(0, y0, cv.width, fade);
+  x.fillStyle = "rgba(6,12,18,.5)"; x.fillRect(0, y0 + fade, cv.width, cv.height);
+}
 /* ---------- pixel battle backdrops: one field scene per stage, castle hall for bosses ---------- */
 const SCENES = ["草原", "森林", "鄉鎮", "沙漠", "沼澤", "洞穴", "雨林"];
 let bgCache = { key: "", cv: null };
@@ -787,7 +812,7 @@ function paintScene(c, name, w, h, gy){   // drawn at 1 px = 1 game pixel, then 
   const pick = a => a[rnd() * a.length | 0];
   const sky = cols => { const b = Math.ceil(gy / cols.length); cols.forEach((col, i) => R(0, i * b, w, b, col)); };
   const hills = (base, amp, freq, col, ph = 0) => { for (let x = 0; x < w; x++) { const top = Math.round(base - amp * (Math.sin(x * freq + ph) * .5 + .5)); R(x, top, 1, gy - top, col); } };
-  const ground = (col, edge, speck) => { R(0, gy, w, h - gy, col); R(0, gy, w, 1, edge); for (let i = 0; i < w / 3; i++) R(rnd() * w, gy + 1 + rnd() * (h - gy - 1), 1, 1, speck); };
+  const ground = (col, edge, speck) => { R(0, gy, w, h - gy, col); R(0, gy, w, 1, edge); for (let i = 0; i < w * (h - gy + 6) / 24; i++) R(rnd() * w, gy + 1 + rnd() * (h - gy - 1), 1, 1, speck); };
   const cloud = (x, y) => { R(x, y, 9, 2, "#ffffff"); R(x + 2, y - 1, 4, 1, "#ffffff"); R(x + 1, y + 2, 7, 1, "#e4f2fa"); };
   const pine = (x, th, col, trunk) => { for (let k = 0; k < th; k++) { const hw = (k * .4 | 0); R(x - hw, gy - 2 - th + k, hw * 2 + 1, 1, col); } R(x, gy - 2, 1, 2, trunk); };
   if (name === "草原") {
@@ -846,7 +871,19 @@ function paintScene(c, name, w, h, gy){   // drawn at 1 px = 1 game pixel, then 
     [.3, .7].forEach(f => { const x = w * f | 0; R(x, 5, 4, 9, "#1a1828"); R(x + 1, 4, 2, 1, "#1a1828"); R(x + 1, 7, 1, 6, "#2a2a4a"); });
     [.12, .5, .88].forEach(f => { const x = (w * f | 0) - 2; R(x, 2, 4, 11, "#8a1e28"); R(x + 1, 5, 2, 2, "#fcd83c"); R(x, 13, 1, 1, "#8a1e28"); R(x + 3, 13, 1, 1, "#8a1e28"); });
     [.2, .4, .6, .8].forEach(f => { const x = w * f | 0; R(x, 13, 1, 3, "#7a4a24"); R(x - 1, 10, 3, 3, "#f08a30"); R(x, 9, 1, 2, "#fcd83c"); });
-    R(0, gy, w, h - gy, "#8a1e28"); R(0, gy, w, 1, "#c08a1a");
+    // royal carpet: deep red with a faint diamond lattice, gold studs, and gold-trimmed bands every few rows
+    R(0, gy, w, h - gy, "#8a1e28");
+    for (let y = gy + 1; y < h; y++) for (let x = 0; x < w; x++) {
+      const a = (x + y) % 8, b = (x - y + 800) % 8;
+      if (a === 0 || b === 0) R(x, y, 1, 1, "#6e1620");
+      else if (a === 4 && b === 4) R(x, y, 1, 1, "#d8a838");
+    }
+    for (let y = gy + 14; y < h - 3; y += 22) {
+      R(0, y, w, 1, "#e0b040"); R(0, y + 1, w, 1, "#8a5a10"); R(0, y + 5, w, 1, "#8a5a10"); R(0, y + 6, w, 1, "#e0b040");
+      R(0, y + 2, w, 3, "#5a0e18");
+      for (let x = 2; x < w; x += 6) { R(x, y + 3, 1, 1, "#ffd860"); R(x - 1, y + 3, 3, 1, "#d8a838"); R(x, y + 2, 1, 3, "#d8a838"); }
+    }
+    R(0, gy, w, 1, "#e0b040"); R(0, gy + 1, w, 1, "#8a5a10"); R(0, gy + 2, w, 1, "#c08a1a");
   }
 }
 
