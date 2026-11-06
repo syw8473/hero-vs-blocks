@@ -159,6 +159,7 @@ canvas{-webkit-tap-highlight-color:transparent}
         <p id="ov-text">排滿一整層磚塊，勇者就會出手打倒眼前的怪物。每關先消 10 層打一般怪，再進魔王關：第幾關就要再消幾層。</p>
         <button class="primary" id="start">開始冒險</button>
         <p id="best" class="sub"></p>
+        <p id="tap-hint" class="sub" hidden>輕點畫面播放主題曲 ♪</p>
         <div style="display:flex;gap:8px">
           <button class="ghost" id="music-btn">音樂：開</button>
           <button class="ghost" id="sound-btn">音效：開</button>
@@ -312,6 +313,7 @@ function advance(){ spawn(queue.shift()); queue.push(nextFromBag()); drawSide();
 
 function gameOver(){
   state = "over"; cur = cur || null;
+  mMode = "title"; gameOverJingle();
   if (score > best) { best = score; try { localStorage.setItem("tilekiln-best", best); } catch(e) {} }
   hero.down = true;
   showOverlay("勇者倒下了", `這趟冒險打到第 ${level} 關、擊敗 ${kills} 隻怪物，拿下 ${score.toLocaleString()} 分。`, "再次出發");
@@ -788,7 +790,8 @@ function updateLane(dt){
     }
   }
   // now playing: shown in the chip under the board (hidden while music is off or before the first stage starts)
-  const np = $("nowplaying"), tn = musicOn && trackIdx >= 0 ? "♪ " + (mBoss ? BOSS_TRACKS[bossIdx].name : TRACKS[trackIdx].name) : "";
+  const playing = state !== "play" ? TITLE_TRACK : mBoss ? BOSS_TRACKS[bossIdx] : TRACKS[trackIdx];   // a field theme is picked a moment after Start
+  const np = $("nowplaying"), tn = musicOn && mTimer && playing ? "♪ " + playing.name : "";
   if (np.textContent !== tn) { np.textContent = tn; np.hidden = !tn; }
   // battle callouts
   if (laneMsg) {
@@ -1429,7 +1432,7 @@ function drum(t, kind){
 function trackTick(tr){
   const step = 60 / tr.bpm / 2;
   while (mNext < actx.currentTime + .15) {
-    const i = mStep % 64, bar = i >> 3, j = i & 7, b = tr.bass[bar], mel = tr.mel[bar];
+    const i = mStep % (tr.mel.length * 8), bar = i >> 3, j = i & 7, b = tr.bass[bar], mel = tr.mel[bar];
     const root = Array.isArray(b) ? b[0] : b, bn = Array.isArray(b) ? b[j] : b + BASS_STYLE[tr.style][j];
     if (bn) bnote(N(bn), mNext, step * .8, tr.bassWave ? .3 : .55, tr.bassWave || "triangle");   // driving bass
     const m = mel[j];
@@ -1446,7 +1449,33 @@ function trackTick(tr){
     mNext += step; mStep++;
   }
 }
+/* main theme for the title and game-over screens: an original overture in the grand RPG style —
+   a rising horn-call fanfare, then a stately dotted-rhythm march in C major (16 bars, loops back to the fanfare) */
+const TITLE_TRACK = { name: "序曲・勇者的旅程", bpm: 116, style: "octave", pad: true, double: true, stab: true, drums: true,
+  bass: [36, 36, 36, 41, 36, 43, 36, 41, 43, 36, 33, 41, 38, 43, 41, 43],
+  chords: [M3, M3, M3, M3, M3, M3, M3, M3, M3, M3, m3, M3, m3, M3, M3, M3],
+  mel: [[67, 1, 72, 1, 76, 1, 79, 1], [84, 1, 1, 1, 1, 1, 0, 0],
+        [72, 1, 1, 74, 76, 1, 72, 1], [77, 1, 1, 76, 74, 1, 1, 1], [79, 1, 1, 77, 76, 1, 74, 1], [74, 1, 1, 1, 67, 1, 1, 1],
+        [72, 1, 1, 74, 76, 1, 79, 1], [81, 1, 1, 79, 77, 1, 76, 1], [74, 1, 76, 1, 77, 1, 71, 1], [72, 1, 1, 1, 1, 1, 0, 0],
+        [76, 1, 1, 77, 79, 1, 81, 1], [84, 1, 1, 81, 79, 1, 1, 1], [77, 1, 1, 79, 81, 1, 77, 1], [79, 1, 1, 1, 74, 1, 1, 1],
+        [84, 1, 83, 1, 81, 1, 79, 1], [77, 1, 79, 1, 74, 1, 71, 1]] };
+let mMode = "", titleAt = 0;
+function gameOverJingle(){   // a slow falling phrase in A minor that settles on a low, dark chord (about 4 s), then the main theme returns
+  const a = actx; if (!a || !musicOn || a.state !== "running") { titleAt = 0; return; }
+  const t = a.currentTime + .15, q = .42;
+  [[76, 0, 1], [74, 1, 1], [72, 2, 1], [71, 3, 2], [72, 5, .5], [69, 5.5, 3]].forEach(([m, at, len]) => mnote(N(m), t + at * q, len * q * .95, .42, true));
+  [[45, 0, 2], [41, 2, 2], [40, 4, 1.5], [33, 5.5, 3]].forEach(([m, at, len]) => bnote(N(m), t + at * q, len * q, .5, "triangle"));
+  [57, 60, 64].forEach(m => bnote(N(m), t + 5.5 * q, 3 * q, .05, "sawtooth"));
+  titleAt = t + 8.8 * q;
+  mStep = 0; mNext = Math.max(mNext, titleAt);
+}
 function musicTick(){
+  if (state !== "play") {   // title and game-over screens play the main theme (after the game-over phrase has finished)
+    if (mMode !== "title") { mMode = "title"; mStep = 0; mBoss = false; }
+    if (actx.currentTime < titleAt) mNext = Math.max(mNext, titleAt);
+    trackTick(TITLE_TRACK); return;
+  }
+  if (mMode !== "play") { mMode = "play"; mStep = 0; mNext = Math.max(mNext, actx.currentTime + .05); titleAt = 0; }
   const boss = !!(foe && foe.boss && state === "play");
   if (level !== trackLv) {   // a new stage picks a different field theme at random, kept until the next stage
     trackLv = level;
@@ -1460,7 +1489,7 @@ function musicTick(){
   trackTick(boss ? BOSS_TRACKS[bossIdx] : TRACKS[trackIdx]);
 }
 function musicSync(){
-  const should = musicOn && state === "play" && actx && actx.state === "running" && !document.hidden;
+  const should = musicOn && state !== "pause" && actx && actx.state === "running" && !document.hidden;   // battle themes in play, the main theme on the title / game-over screens
   if (should && !mTimer) { mNext = actx.currentTime + .05; mTimer = setInterval(musicTick, 25); }
   else if (!should && mTimer) { clearInterval(mTimer); mTimer = null; }
 }
@@ -1491,6 +1520,8 @@ function frame(t){
   }
   if (grid) drawBoard();
   updateLane(dt); drawFx(dt); musicSync();
+  const hint = $("tap-hint"), showHint = state === "idle" && musicOn && !(actx && actx.state === "running");
+  if (hint.hidden === showHint) hint.hidden = !showHint;
   if (state === "pause") drawPause(dt);
   requestAnimationFrame(frame);
 }
