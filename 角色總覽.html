@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>勇者鬥磚塊 角色總覽</title>
+<style>body{margin:0;background:#e9e4d8;color:#2f3a3c;font-family:"Noto Sans TC",system-ui,sans-serif;padding:16px max(16px,env(safe-area-inset-left,0px))}h2{font-size:15px;margin:18px 0 8px;color:#b4501c}.row{display:flex;flex-wrap:wrap;gap:14px 10px}.it{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;width:76px}canvas{image-rendering:pixelated}</style>
+<h2>勇者</h2><div class="row" id="h"></div><h2>攻擊動作（上：舉劍蓄力／下：揮劍斬下，劍身依消行特效變化）</h2><div class="row" id="atk"></div><h2>怪物 30 種（依強度排列）</h2><div class="row" id="m"></div><h2>魔王 11 種</h2><div class="row" id="b"></div><h2>第 12 關後的魔王（隨機換色範例）</h2><div class="row" id="v"></div>
+<script>
+const OUTLINE="#1a1420";
+/* SPRITES-START */
+// shared pixel colours; each monster adds its own a/b/c/d body colours
+const BASE = { e:"#1a1420", w:"#ffffff", r:"#e0403c", y:"#fcd83c", p:"#f490b0", o:"#f08a30", k:"#a8b0b8", K:"#5c646c",
+  g:"#5cc85c", G:"#2f7a3a", n:"#7a4a24", N:"#4a2c14", s:"#f4c29a" };
+// hero: chibi, facing the viewer — spiky black hair, gold circlet with a blue gem, red cape, sword and round shield
+const HERO_PAL = { ...BASE, k:"#22222c", K:"#4a4a60", q:"#3cbcfc", s:"#f6c7a0", S:"#c8785a", p:"#f4a0a0",
+  a:"#3a6ad0", A:"#22408a", y:"#fcd83c", Y:"#c08a1a", d:"#4aa0e0", w:"#f0f4f8", W:"#9aa8b8",
+  c:"#d0343c", C:"#8a1e28", n:"#9a6a34", b:"#6a4020", B:"#3a2410" };
+const HERO_ROWS = [
+  ".wW...k....k....k.....",
+  ".wW..kk...kk...kk.....",
+  ".wW.kkkk.kkKk.kkkk....",
+  ".wWkkkkkkkKkkkkkkkkk..",
+  ".wWkkkKkkkkkkkkkKkkkk.",
+  ".wW.kyyyyyqqyyyyyk....",
+  ".wW.kYYYYYqqYYYYYk....",
+  ".wW.kksssssssssskk....",
+  ".wW.kkskksssskkskk....",
+  ".wW.kkseesssseeskk....",
+  ".wW..kseesssseesk.....",
+  ".wW...pssssssssp......",
+  ".wW...SsssSSsssS......",
+  "yyyy.cAaaaaaaA.yyyyy..",
+  ".sssAaaaaaaaaaydddddy.",
+  "..n.cAaaaaaaaayddwddy.",
+  "..n.cAaaaaaaaaydwwwdy.",
+  "...CcAaaaaaaaAyddwddy.",
+  "...CcyyyyYYyyyydddddy.",
+  "..CCcckkkkkkkc.ydddy..",
+  "..CCcckkkkkkkccCyyy...",
+  "..CCccckk..kkcCC......",
+  "...CCcnnn..nnnc.......",
+  "......bbb..bbb........",
+  ".....BBBB..BBBB.......",
+];
+// 30 monsters, weakest first. Each row is the LEFT half; it is mirrored to 16 px wide.
+const MONSTERS = [
+ ["果凍球","5fc8e8,2a7fa8,d8f6ff",["........","........","........","........","........","......bb","....bbaa","...baaaa","..bacaaa","..bccaaa",".baaaeaa",".baaaeaa",".baaaaaa",".baaaaae","..baaaaa","...bbbbb"]],
+ ["夜蝙蝠","8a5ac0,4a2a70,e090c0",["........","........","........","........","b.......","bb...b..","bab..bb.","baab.baa","bcaabaea","bccaaaaa","bcbbaaew","bb..baaa","b....ba.","......b.","........","........"]],
+ ["毒蘑菇","e0403c,8a2420,ffffff,f0dcc0",["........","........","........",".....bbb","...bbaaa","..baacca",".baaacca",".bccaaaa","bbccaaaa","bbbbbbbb","...ddddd","...ddedd","...ddddd","...dddee","...ddddd","..nnn..."]],
+ ["藍鬼火","7ae0ff,2a90c0,ffffff",["........",".......b","......ba",".....bac","....baac","...b.acc","...baacc","..baaccc","..bacwec","..bacwec","..baaccc","...baacc","....baac",".....bba","........","........"]],
+ ["獨眼蟲","9ad04a,4a7a20,d8f090",["........","........","....b...",".....b..","......bb","....bbaa","...baaaa","..baawww","..baawee","..baawee","..baawww","..bcaaaa","..bccaaa","...bbaba","...b.b.b","........"]],
+ ["骷髏頭","f0ece0,9a9488,ffffff",["........","........","....bbbb","...baaaa","..baacaa","..bacaaa","..baaaaa","..baeeea","..baeeea","..baaaae","...baaaa","...bawaw","...bbebe","....bbbb","........","........"]],
+ ["小石怪","a89a88,6a5e50,d0c4b0",["........","........","........","....bbbb","...baaaa","...baeaa","...baaaa","..bbbbbb",".baacaaa","baaccaaa","baaaaaba","bbbaaaab","...baab.","...baab.","..bbbbb.","........"]],
+ ["食人花","e05080,902848,ffd0e0",["........","..bb..bb",".baab.ba",".baacbba","..baaaaa",".bbaeeee","baaewewe","baaeeeee","baaeeepp",".baaewew","..baaaaa","......Gg","......Gg","...GG.Gg","..GggGGg","...GGGGG"]],
+ ["白幽靈","e8eef8,8a9ab8,ffffff",["........","........",".....bbb","....baaa","...baaaa","...baeea","...baeea","..baaaaa","..baaaae","..baaaae",".baaaaaa","baaaaaaa","baaaaaaa","bab.baab","b...bb..","........"]],
+ ["鉗子蟹","e05a3c,902a1c,ffa080",["........","........",".bb.....","baab....","ba.b....","baab..e.",".bb...b.","..b..bbb","..bbbaaa","...baaca","..baacaa","..baaaae","...baaaa","..b.bbbb",".b..b..b","........"]],
+ ["暗影蛛","6a5a80,3a2a4a,a898c0",["........","........","........","....bbbb","...baaaa","b..baaca",".b.bacca","..bbaaaa","bbbbarar","...baaaa","..bbaaaw",".b.bbaaa","b...bbbb","b..b....","..b.....","........"]],
+ ["夜梟","9a6a3a,5a3a1a,e8c890",["........","........","..b.....","..bbbbbb","..baaaaa","..bwwwaa","..bwyewa","..bwwwwa","..baaaao","..bcaaao","..bccccc","..bcacac","..bccccc","...bcccc","....o.o.","........"]],
+ ["仙人掌怪","5cc85c,2f7a3a,a8f0a0",["......pp",".....bbb","....baaa","....baca",".bb.baaa",".ab.baea",".ab.baaa",".abbbaae","..bbbaaa","....baca","....baaa","....baca","....baaa","..nnnnnn","...nNNNN","...nnnnn"]],
+ ["樹樁精","9a6a3a,5a3a1a,c89a60",["........","........","...g.g.g","..bbbbbb",".bcccccc",".bcbbbcc",".bbbbbbb",".baaaaaa",".baeeaba",".baaabaa",".baaaaee",".baabaaa",".baaaaba","bbabaaaa","b.bbabbb","..b..b.."]],
+ ["鐵甲蟲","4a8ab0,204a6a,a8e0ff",["........",".......b","......ba","......ba","....bbba","...baaaa","..baayaa","..bbbbbb",".bacaaab","baccaaab","bacaaaab","baaaaaab",".baaaaab","..bbbbbb",".b.b..b.","b..b...."]],
+ ["紫毒蛙","a050c0,5a2070,e0a0f0",["........","........","........","..bbb...",".bwwwb..",".bwewb..","..bbbbbb",".baaaaaa","baayaaaa","baaaaaaa","baeeeeee","bacccccc",".bcccccc","..bbbbbb",".bab..ba","bbb...bb"]],
+ ["寶箱怪","b07a3a,5a3a1a,d8a060",["........","........","..bbbbbb",".baaaaaa",".baayaaa",".byyyyyy",".bewewew",".beereee",".beeeepp",".bewewew",".byyyyyy",".baaaayy",".baaaaaa",".byyyyyy",".bbbbbbb","........"]],
+ ["南瓜頭","f08a30,a04a10,ffc070",[".......G",".......G","....bbbb","..bbaaba",".baacaba",".bacabaa","baayabaa","bayyybaa","baaaaaba","bayyyyyy","baayyaya",".baaabaa",".bbaabaa","..bbbbbb","........","........"]],
+ ["火焰精","f08a30,c03018,fcd83c",["...b....","...bb..b","..bab.ba","..baabaa",".baacaac",".bacccac","bacccccc","bacceccc","bacceccc","baccccee",".baccccc","..baaaaa","...bbbbb","........","........","........"]],
+ ["冰晶精","a0e0ff,3a8ac0,ffffff",[".......b","......bc",".....bca","b...bcaa",".b.bcaaa","..bcaaaa","..bcaeaa","..bcaeaa",".bbcaaaa","b..bcaaa","....bcaa",".....bca","......bc",".......b","........","........"]],
+ ["粉章魚","e06a8a,902a4a,ffb0c8",["........",".....bbb","....baaa","...bacca","...bacaa","...baaaa","...bweaa","...bweaa","...baaaa","..baaaaa","..baabaa",".ba.ba.b","ba..b..b","b..b..b.","........","........"]],
+ ["飛眼魔","f0e8e0,9a8a88,ffffff,8a4ab0",["........","........","d.......","dd...bbb","ddd.baaa","dddbaarr","dddbarre","ddbbarre","d..baarr","....baaa",".....bbb","........","........","........","........","........"]],
+ ["空盔甲","a8b0b8,5c646c,e8eef0",[".......r","......rr",".....bbb","....baca","....baaa","....beye","....baaa","..bbbbbb",".baacaab",".bacaaab","..baaaab","..byyyyy","..baaaab","..baab..","..baab..",".bbbbb.."]],
+ ["灰狼頭","8a8a9a,4a4a5a,d0d0e0",["........","..b.....","..bb....","..bcab..","..bcaabb","..baaaaa",".baayeaa",".baaaaaa","baaacccc","baacccce",".bacweee","..bccccc","...bbbbb","........","........","........"]],
+ ["雷雲怪","7a8aa8,3a4a68,c8d4e8",["........","...bbb..","..baaabb",".baacaaa","bacaaaaa","baaaeaaa","baaaaaee",".bbaaaaa","..bbbbbb","....y...","...yy...","....y...","...y....","........","........","........"]],
+ ["小惡魔","c03838,701818,f07070",["........",".K......",".KK..bbb","..KKbaaa","...baaaa","...bayaa","...baaaa","...baewe","b...baaa","bb.bbaaa",".bbaaaaa","...baaaa","...bab..","..bbb...","........","........"]],
+ ["雙頭蛇","7ab040,3a6a1a,d0e890",["........",".bbb....","baaab...","bayab...","baaab...","rbaab...","..bab...","..baab..","...baab.","....baab","....bcaa","...bacca","..baaaaa",".baacaaa","bbbbbbbb","........"]],
+ ["木乃伊","e0d8c0,8a8270,fff8e0",["........","....bbbb","...baaca","...bbbbb","...baraa","...bbbbb","...bacaa","..bbbbbb","baaacaaa","bbbbbbbb","..bacaaa","..bbbbbb","..baab..","..bbbb..","..baab..",".bbbbb.."]],
+ ["機械兵","8a9aaa,3a4a5a,c8d8e8",[".......r",".......b","....bbbb","....bacc","....baaa","....beer","....baaa","....baaa","..bbbbbb",".bbaaaaa","bab.baaa","bab.baca","...bbbbb","....bab.","...bbbb.","........"]],
+ ["暗黑法師","4a3a8a,201040,7a6ab0,c070ff",["......bb",".....baa","....baaa","...baeee","...baeye","...baeee","..baaaaa","dbaacaaa","ddbacaaa",".baaacaa","baaaacaa","baaaaaca","bbbbbbbb","........","........","........"]],
+];
+// 10 bosses, left half mirrored to 20 px wide
+const BOSSES = [
+ ["巨石魔像","8a7a6a,4a3e32,c0b0a0",["..........","......bbbb",".....baaaa",".....bacaa",".....barra",".....baaaa",".....baaee","..bbbbbbbb",".baacaaaab","baaccaaaab","baacaggaab","baaaaaaaab","bacbaaaaab","bbbb.baaaa",".....baaaa","....baab..","....baab..","...bbbbb..","..........",".........."]],
+ ["骷髏王","f0ece0,9a9488,ffffff,8a2a3a",["....y..y.y","....yy.yyy","....yyyyyy","....yyryyy","....bbbbbb","...baaaaaa","...baacaaa","...baeeeaa","...baereaa","...baaaaae","....baaaaa","....bawawa","....bbebeb",".dddddbbbb","dddbabaaba","dddbaabaaa","ddddbabaaa","dddddbbbbb","dddddd....",".........."]],
+ ["三頭龍","3a9a6a,1a5a3a,9ae0b0",["......bbbb",".bb..baaaa","baab.bayaa","bayabbaaaa","rbaab.bwaw","..bab..bbb","...bab.bab","....babbaa",".....baaca","....baacca","...baacccc","..baaacccc",".baaaacccc",".baaaaccca","..baaaaaaa","...bab..ba","..bbbb.bbb","..........","..........",".........."]],
+ ["惡魔領主","9a2a3a,4a0a18,e06070,5a2a5a",["....k.....","....kk....",".....kk.bb","d.....kbaa","dd....baaa","ddd...byya","dddd..baaa","ddddd.bwew","dddddbbaaa","ddddbaacaa","dddbaaccaa","dd.baacaaa","d..byyyyyy","...baaaaaa","....baab..","....baab..","...bbbbb..","..........","..........",".........."]],
+ ["千眼魔","7a3a9a,3a1a5a,c080e0",[".ww....ww.",".we....ew.","..b....b..","...b...bbb","....bbbaaa","...baaacaa","..baaccaaa",".baacaawww",".baaaawwrr","baaaawwree","baaaawwree","baaaaawwrr",".baaaaawww",".baaaaaaaa","..baewewew","...baeeeee","....bbaaaa","......bbbb","..........",".........."]],
+ ["冰霜巨人","8ab0d8,3a5a8a,e0f0ff",[".....c.c.c",".....ccccc",".....baaaa",".....baaaa",".....bayaa",".....baaaa",".....bwwww","....bwwwww","..bbbbwwww",".baaabbwww","baacaaaabw","baaccaaaaa","bbbbaaaaaa","baab.baaaa","bbbb.baaaa",".....bbbbb","....baaab.","....baab..","...bbbbb..",".........."]],
+ ["地獄魔犬","6a3a3a,2a1010,a06a5a",["..o.......",".oo...o...","oooo.oyo..","ooyooooo.o",".ooobbbbbb","ooobaaaaaa","oobaacaaaa","oobaayyaaa","oobaaaaaaa",".obaaacccc","..baacccbb","..bacweeee","..bacweerr","...bacwwww","....bccccc",".....bbbbb","..........","..........","..........",".........."]],
+ ["深海章魚王","3a6aaa,1a3a6a,8ab8f0",["......y.yy","......yyyy",".....bbbbb","....baaaaa","...baacaaa","...bacaaaa","...baaaaaa","...bawwaaa","...baweaaa","...baaaaaa","...baaaaaa","..baaaaaaa",".baabaabaa","bab.bab.ba","b..ba.ba.b","bb..ba.ba.","..........","..........","..........",".........."]],
+ ["死神","4a4a62,141420,7a7a9a",[".......bbb","......baaa",".....baaaa","....baawww","....bawrww","....bawwwe","....baawww","...baaaaaa","..baacaaaa",".baacaaaaa","wbacaaaaaa","ww.baaaaaa","...baacaaa","..baacaaaa",".baacaaaaa","bab.babbab","..........","..........","..........",".........."]],
+ ["深淵魔龍","5a2a8a,200a40,a060d0,4a2a6a",["...k......","...kk.....","....kk.bbb","d....kbaaa","dd...baaaa","ddd..byyaa","dddd.baaaa","ddddd.bacc","ddddd.bcec","dddddbbwww","ddddbaaaaa","dddbaaccca","ddbaaacccc","d.baaacccc","..baaacccc","..baabaccc","..bab..baa",".bbbb.bbbb","..........",".........."]],
+];
+// the hero's dark twin: same pixels, mirrored, villain colours (white hair, red eyes, crimson blade)
+const EVIL_PAL = { k:"#d8d8e8", K:"#ffffff", q:"#ff2040", s:"#b8a8c8", S:"#7a6a8a", p:"#9a7aa8", e:"#ff2040",
+  a:"#4a1a5a", A:"#280a32", y:"#7a7a88", Y:"#44444f", d:"#2e1a38", w:"#ff4060", W:"#901830",
+  c:"#6a1a7a", C:"#3a0a48", n:"#3a2a2a", b:"#2e2234", B:"#160c1a" };
+BOSSES.push(["黑暗勇者", EVIL_PAL, HERO_ROWS, true]);
+function foeSprite(def, pal){
+  return def[3] ? makeSprite(def[2].map(r => [...r].reverse().join("")), pal, false, true) : makeSprite(def[2], pal, true);
+}
+// game over: the hero turns into an upright coffin — gold rim and cross on a blue lid
+const COFFIN_ROWS = ["..yyyyy",".yyuuuu",".yuuuuu","yyuuuuu","yuuuuuy","yuuuuuy","yuuuuuy","yuuyyyy","yuuyyyy","yuuuuuy",".yuuuuy",".yuuuuy",".yuuuuy",".yuuuuy",".yuuuuy","..yuuuy","..yuuuy","..yuuuu","..yuuuu","...yuuu","...yyyy"];
+const COFFIN_PAL = { ...BASE, y:"#fcd83c", u:"#2a4ab0" };
+// walking: two frames that swap which boot is lifted (rows 21+ replace the standing legs)
+const HERO_WALK = [
+  ["..CCccnnn..kkcCC......","...CCcbbb..nnnc.......",".....BBBB..bbb........","...........BBBB......."],
+  ["..CCccckk..nnnCC......","...CCcnnn..bbbc.......","......bbb..BBBB.......",".....BBBB............."],
+].map(legs => HERO_ROWS.slice(0, 21).concat(legs));
+// attack pose: same hands as walking (sword left, shield right), sword removed — the blade is drawn by code at any angle
+const HERO_STRIKE = HERO_WALK[0].map((r, y) => y <= 16 ? [...r].map((ch, x) => x <= 3 && "wWyn".includes(ch) ? "." : ch).join("") : r);
+const SWORD_PIVOT = [3, 15];   // the sword hand, in sprite pixels (outline included)
+const BLADES = {   // blade colours per element of the current line clear
+  slash:   { core: "#ffffff", edge: "#a8b4c0", glow: null,      trail: "#ffffff", arc: ["#ffffff", "#c8e4f4", "#6a9ac0"] },
+  fire:    { core: "#fff0a0", edge: "#f08a30", glow: "#e0403c", trail: "#f08a30", arc: ["#fff6c0", "#f08a30", "#b8301c"] },
+  ice:     { core: "#ffffff", edge: "#7ac8f0", glow: "#bfe9ff", trail: "#7ae0ff", arc: ["#ffffff", "#9ae4ff", "#3a8ac0"] },
+  thunder: { core: "#ffffff", edge: "#ffd400", glow: "#fff27a", trail: "#ffd400", arc: ["#ffffff", "#ffd400", "#b88a10"] },
+  holy:    { core: "#ffffff", edge: "#dfe8f8", glow: "#f4f8ff", trail: "#ffffff", arc: ["#ffffff", "#eef4ff", "#9ab0d8"] },
+  dark:    { core: "#ecd4ff", edge: "#8a2ac8", glow: "#3a0a5a", trail: "#9a3ae0", arc: ["#f0d8ff", "#9a3ae0", "#3a0a5a"] },
+};
+function drawSword(ctx, ox, oy, px, deg, elem, ghost){
+  const B = BLADES[elem] || BLADES.slash, a = deg * Math.PI / 180, dx = Math.cos(a), dy = -Math.sin(a), nx = -dy, ny = dx, L = 14;
+  const [ax, ay] = SWORD_PIVOT;
+  const dot = (x, y, col) => { ctx.fillStyle = col; ctx.fillRect(ox + Math.round(x) * px, oy + Math.round(y) * px, px, px); };
+  const along = (t0, t1, off, col) => { for (let t = t0; t <= t1; t += .5) dot(ax + dx * t + nx * off, ay + dy * t + ny * off, col); };
+  if (ghost) { ctx.globalAlpha = ghost; along(L * .4, L, 0, B.trail); along(L * .4, L, 1, B.trail); ctx.globalAlpha = 1; return; }   // swing trail
+  if (B.glow) {   // elemental aura hugging the blade
+    ctx.globalAlpha = .6;
+    for (let t = 1.5; t <= L + 1.5; t += .5) {
+      const f = elem === "fire" || elem === "thunder" ? Math.random() * 1.6 : 0;
+      dot(ax + dx * t - nx * (2 + f), ay + dy * t - ny * (2 + f), B.glow); dot(ax + dx * t + nx * (3 + f), ay + dy * t + ny * (3 + f), B.glow);
+    }
+    ctx.globalAlpha = 1;
+  }
+  for (const [ox2, oy2] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) for (let t = 1.5; t <= L; t += .5) { dot(ax + dx * t + ox2, ay + dy * t + oy2, OUTLINE); dot(ax + dx * t + nx + ox2, ay + dy * t + ny + oy2, OUTLINE); }
+  along(-2.5, -.5, 0, "#7a4a24");                                                     // hilt
+  for (let k = -2; k <= 3; k++) dot(ax + dx * .8 + nx * k, ay + dy * .8 + ny * k, "#fcd83c");   // guard
+  along(1.5, L, 0, B.core); along(1.5, L, 1, B.edge);                               // blade
+}
+function swingAngle(p){   // raise the sword up and back, cut down across toward the monster, hold, recover
+  return p < .3 ? 90 + 45 * (p / .3) : p < .48 ? 135 - 190 * ((p - .3) / .18) : p < .75 ? -55 : -55 + 145 * ((p - .75) / .25);
+}
+// sword-qi crescent: a wide pixel arc around the sword hand — bright leading rim, element colour inside, tapered ends
+const ARC_RX = 30, ARC_RY = 17, ARC_TH = 7;
+function drawArc(ctx, cx, cy, px, fromDeg, toDeg, elem, alpha){
+  const C = (BLADES[elem] || BLADES.slash).arc, a0 = fromDeg * Math.PI / 180, a1 = toDeg * Math.PI / 180;
+  const steps = Math.max(2, Math.ceil(Math.abs(a0 - a1) * ARC_RX * 1.6)), seen = new Set();
+  ctx.globalAlpha = alpha;
+  for (let i = 0; i <= steps; i++) {
+    const u = i / steps, a = a0 + (a1 - a0) * u, th = ARC_TH * Math.sin(Math.PI * Math.min(1, u * .85 + .1));
+    for (let k = 0; k <= th; k += .5) {
+      const x = Math.round(Math.cos(a) * (ARC_RX - k)), y = Math.round(-Math.sin(a) * (ARC_RY - k * ARC_RY / ARC_RX)), key = x + "," + y;
+      if (seen.has(key)) continue; seen.add(key);
+      ctx.fillStyle = k < 1 ? C[0] : k < th * .55 ? C[1] : C[2];
+      ctx.fillRect(cx + x * px, cy + y * px, px, px);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+/* SPRITES-END */
+const HUE_NAMES = ["赤","橙","金","翠","碧","蒼","紫","緋"];
+function toHsl(hex){
+  const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let h = 0, s = 0;
+  if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = (mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60; }
+  return [h, s, l];
+}
+function fromHsl(h, s, l){
+  const f = n => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l); return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return "#" + [f(0), f(8), f(4)].map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+}
+function palette(spec, shift){   // body colours (a/b/c/d string, or a full colour map), optionally hue-rotated
+  const pal = { ...BASE };
+  const entries = typeof spec === "string" ? spec.split(",").map((hx, i) => ["abcd"[i], "#" + hx]) : Object.entries(spec);
+  entries.forEach(([key, col]) => {
+    if (shift && key !== "e") { const [h, s, l] = toHsl(col); col = fromHsl((h + shift) % 360, Math.max(s, .45), l); }
+    pal[key] = col;
+  });
+  return pal;
+}
+function tint(hex, dl){ const [h, s, l] = toHsl(hex); return fromHsl(h, s, Math.min(.96, Math.max(.04, l + dl))); }
+function makeSprite(rows, pal, mirror, shade = mirror){
+  if (mirror) rows = rows.map(r => r + [...r].reverse().join(""));
+  const filled = r => /[^.]/.test(r);
+  rows = rows.slice(rows.findIndex(filled), rows.length - [...rows].reverse().findIndex(filled));
+  const w = rows[0].length, h = rows.length;
+  const cv = document.createElement("canvas"); cv.width = w + 2; cv.height = h + 2;
+  const c = cv.getContext("2d");
+  const on = (x, y) => x >= 0 && y >= 0 && x < w && y < h && rows[y][x] !== ".";
+  c.fillStyle = OUTLINE;   // 1px dark outline, NES style
+  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++)
+    if (!on(x, y) && (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1))) c.fillRect(x + 1, y + 1, 1, 1);
+  const cache = {};
+  rows.forEach((r, y) => [...r].forEach((ch, x) => {
+    if (ch === ".") return;
+    let col = pal[ch] || "#ff00ff";
+    if (shade && ch !== "e" && ch !== "w") {
+      let dl = -.1 * y / h;                                         // body gets darker toward the feet
+      if (!on(x, y - 1) || !on(x - 1, y)) dl += .13;                // lit edge (top / left)
+      else if (!on(x, y + 1) || !on(x + 1, y)) dl -= .13;           // shadow edge (bottom / right)
+      else if (!on(x, y + 2) || !on(x + 2, y)) dl -= .06;
+      const key = col + Math.round(dl * 50);
+      col = cache[key] || (cache[key] = tint(col, Math.round(dl * 50) / 50));
+    }
+    c.fillStyle = col; c.fillRect(x + 1, y + 1, 1, 1);
+  }));
+  return cv;
+}
+function whiteOf(cv){   // hit-flash copy of a sprite
+  const o = document.createElement("canvas"); o.width = cv.width; o.height = cv.height;
+  const c = o.getContext("2d"); c.drawImage(cv, 0, 0);
+  c.globalCompositeOperation = "source-atop"; c.fillStyle = "#ffffff"; c.fillRect(0, 0, o.width, o.height);
+  return o;
+}
+
+
+function put(id,cv,label,P=3){const d=document.createElement("div");d.className="it";const c=document.createElement("canvas");c.width=cv.width*P;c.height=cv.height*P;const x=c.getContext("2d");x.imageSmoothingEnabled=false;x.drawImage(cv,0,0,c.width,c.height);d.append(c,label);document.getElementById(id).append(d);}
+const W2=HERO_WALK.map(r=>makeSprite(r,HERO_PAL,false));
+put("h",W2[0],"走路 1",4);put("h",W2[1],"走路 2",4);
+put("h",W2[0],"走路動畫",4);{const c=document.querySelectorAll("#h canvas")[2],x=c.getContext("2d");x.imageSmoothingEnabled=false;let i=0;setInterval(()=>{i^=1;x.clearRect(0,0,c.width,c.height);x.drawImage(W2[i],0,0,c.width,c.height);},280);}
+put("h",makeSprite(COFFIN_ROWS,COFFIN_PAL,true),"陣亡棺材",4);
+{const st=makeSprite(HERO_STRIKE,HERO_PAL,false),P=3,PL=24,PT=14,PR=14;
+ [["slash","疾風"],["fire","火焰"],["ice","冰凍"],["thunder","雷電"],["holy","聖光"],["dark","暗黑"]].forEach(([e,n])=>[[135,"蓄力"],[-55,"斬下"]].forEach(([ang,lab])=>{
+  const c=document.createElement("canvas");c.width=(st.width+PL+PR)*P;c.height=(st.height+PT+4)*P;const x=c.getContext("2d");x.imageSmoothingEnabled=false;
+  const ox=PL*P,oy=PT*P;x.drawImage(st,ox,oy,st.width*P,st.height*P);
+  if(ang<0)drawArc(x,ox+SWORD_PIVOT[0]*P,oy+SWORD_PIVOT[1]*P,P,135,-55,e,.95);
+  drawSword(x,ox,oy,P,ang,e);
+  const d=document.createElement("div");d.className="it";d.style.width="auto";d.append(c,n+"・"+lab);document.getElementById("atk").append(d);}));}
+MONSTERS.forEach(m=>put("m",makeSprite(m[2],palette(m[1],0),true),m[0]));
+BOSSES.forEach(m=>put("b",foeSprite(m,palette(m[1],0)),m[0]));
+BOSSES.forEach(m=>{const sh=30+Math.random()*300,pal=palette(m[1],sh);put("v",foeSprite(m,pal),HUE_NAMES[Math.round(toHsl(pal.a)[0]/45)%8]+"・"+m[0]);});
+</script>

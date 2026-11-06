@@ -1,0 +1,1350 @@
+<title>勇者鬥磚塊</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;800&family=Noto+Sans+TC:wght@400;700&family=JetBrains+Mono:wght@500;700&family=Press+Start+2P&family=Yuji+Boku&display=swap">
+<style>
+/* Layout: kiln-shelf — the board is the firing chamber, side shelf holds hold/next/stats; stacks on phones */
+:root{
+  --kiln:#0e2a2d;        /* deep teal glaze ground */
+  --shelf:#163a3e;
+  --grid:#1d474b;
+  --clay:#efe3cc;        /* bisque text */
+  --clay-dim:#9fb7b3;
+  --ember:#e0703a;       /* persimmon accent */
+  --pad:#24373c;         /* d-pad / pill plastic */
+  --bezel:#4c535a;       /* slate screen bezel */
+  --shell:#d7d3ca;       /* handheld plastic shell */
+  --shell-d:#b8b3a8;
+  --ink:#2f5257;         /* printed labels on the shell */
+  --f-display:"Unbounded","Noto Sans TC",system-ui,sans-serif;
+  --f-body:"Noto Sans TC",system-ui,sans-serif;
+  --f-num:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{margin:0;background:var(--kiln);color:var(--clay);font-family:var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:16px;box-sizing:border-box;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.wrap{height:100%;display:flex;flex-direction:column;align-items:center;gap:12px}
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;justify-content:center}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(20px,4vw,28px);letter-spacing:.04em;margin:0;text-wrap:balance}
+h1 span{color:var(--ember)}
+.sub{font-size:12px;color:var(--clay-dim);letter-spacing:.08em}
+.game{flex:1;min-height:0;width:100%;overflow:hidden;display:flex;gap:16px;align-items:flex-start;justify-content:center}
+.board-box{position:relative;border-radius:6px;box-shadow:0 0 0 3px var(--shelf),0 0 0 5px #2a5a5e,0 18px 40px rgba(0,0,0,.45)}
+canvas{display:block}
+.side{display:flex;flex-direction:column;gap:12px;width:120px}
+.panel{background:var(--shelf);border-radius:6px;padding:10px}
+.panel{text-align:center}
+.panel canvas{margin-inline:auto}   /* every info panel: labels, numbers and piece previews centred */
+.label{font-family:var(--f-display);font-size:10px;letter-spacing:.18em;color:var(--clay-dim);text-transform:uppercase;margin-bottom:6px}
+.stat{font-family:var(--f-num);font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.stats{display:grid;gap:10px}
+.keys{font-size:11px;line-height:1.7;color:var(--clay-dim)}
+.keys b{font-family:var(--f-num);color:var(--clay);font-weight:500}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  background:rgba(10,30,32,.82);border-radius:6px;text-align:center;padding:16px}
+.overlay[hidden]{display:none}
+#pausebg{position:absolute;inset:0;width:100%;height:100%;border-radius:6px;image-rendering:pixelated;display:none;z-index:0}
+.overlay>*:not(#pausebg){position:relative;z-index:1}
+/* paused: the night campfire scene shows through, text sits up in the starry sky */
+.overlay[data-mode="pause"]{background:transparent;justify-content:flex-start;padding-top:14%}
+.overlay[data-mode="pause"] #pausebg{display:block}
+.overlay[data-mode="pause"] h2,.overlay[data-mode="pause"] p{color:#f4efe4;text-shadow:0 2px 0 #0a0f2a,0 0 8px #0a0f2a}
+.overlay[data-mode="pause"] .ghost{background:rgba(10,15,42,.6)}
+.stage{display:flex;flex-direction:column;align-items:center;gap:6px}
+#fx{position:absolute;left:0;top:0;pointer-events:none}
+#lane{image-rendering:pixelated;border-radius:6px}
+.ghost{padding:8px 14px;font-size:13px;color:var(--clay-dim);background:transparent}
+.overlay h2{font-family:var(--f-display);font-size:22px;margin:0;color:var(--clay)}
+.overlay p{margin:0;font-size:13px;color:var(--clay-dim);max-width:22ch}
+button{font:inherit;color:var(--clay);background:var(--shelf);border:1px solid #2f6064;border-radius:8px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+.primary{background:var(--ember);border-color:var(--ember);color:#1b0f08;font-weight:700;padding:10px 22px;font-size:15px}
+/* Handheld layout (iPhone 15 Pro): screen bezel = top 2/3, controls = bottom 1/3.
+   D-pad left, A/B right (tilted), SELECT/START pills centre-bottom */
+.touch{display:none}
+.touch button{padding:0;touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+canvas{-webkit-tap-highlight-color:transparent}
+.touch button:active{transform:scale(.93);filter:brightness(1.3)}
+.cluster{display:flex;flex-direction:column;align-items:center;gap:8px}
+.cap{font-size:11px;color:var(--clay-dim);letter-spacing:.06em;white-space:nowrap}
+.dpad{--d:clamp(38px,min(14vw,6.2vh),56px);display:grid;grid-template-columns:repeat(3,var(--d));grid-template-rows:repeat(3,var(--d));
+  filter:drop-shadow(0 4px 0 #061416)}
+.dpad button,.hub{background:var(--pad);border:none;border-radius:0;color:var(--clay-dim);font-size:18px}
+.dpad .up{grid-area:1/2;border-radius:8px 8px 0 0}
+.dpad .lf{grid-area:2/1;border-radius:8px 0 0 8px}
+.hub{grid-area:2/2}
+.dpad .rt{grid-area:2/3;border-radius:0 8px 8px 0}
+.dpad .dn{grid-area:3/2;border-radius:0 0 8px 8px}
+.ab{display:flex;align-items:flex-start;gap:14px;transform:rotate(-22deg)}
+.ab .cluster:first-child{margin-top:40px}
+.ab button{width:clamp(50px,min(17vw,7.8vh),68px);aspect-ratio:1;border-radius:50%;background:var(--ember);border:none;color:#1b0f08;
+  font-family:"Press Start 2P",monospace;font-size:16px;box-shadow:0 5px 0 #8a3c18}
+.pills{grid-column:1/-1;display:flex;justify-content:center;gap:32px}
+.pills button{width:58px;height:22px;border-radius:11px;background:var(--pad);border:none;transform:rotate(-22deg);box-shadow:0 3px 0 #061416}
+.touch .pills button:active{transform:rotate(-22deg) scale(.93)}
+.pills{display:none}
+/* Phones: battle lane across the top, board in the middle with info columns, handheld d-pad + A/B along the bottom */
+@media (max-width:600px),(hover:none){
+  body{padding-block:6px;padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
+  .wrap{--col:76px;display:grid;grid-template-columns:var(--col) minmax(0,1fr) var(--col);
+    grid-template-rows:auto auto auto 1fr auto;
+    grid-template-areas:"lane lane lane" "hold board next" "stats board pills" ". board ." "ctrl ctrl ctrl";
+    gap:8px 6px;align-content:space-between;justify-items:center;align-items:start}
+  .game,.side,.stage{display:contents}
+  #lane{grid-area:lane}
+  .board-box{grid-area:board}
+  #hold-p{grid-area:hold} .stats{grid-area:stats} #next-p{grid-area:next}
+  .panel{padding:6px;width:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center}
+  .stats{gap:6px;align-items:stretch}
+  .label{font-size:9px;margin-bottom:3px;letter-spacing:.1em}
+  .stat{font-size:15px}
+  .pills{grid-area:pills;display:flex;flex-direction:column;gap:10px;align-items:center;align-self:stretch;justify-content:space-evenly;padding-block:6px;box-sizing:border-box}   /* spread over the same height as the score panel opposite */
+  .pills .cluster{gap:4px}
+  .pills button{width:58px;height:20px;border-radius:10px;background:#3a5054;border:none;box-shadow:0 3px 0 #061416;padding:0;transform:none;touch-action:none;-webkit-tap-highlight-color:transparent}
+  .pills button:active{transform:scale(.93);filter:brightness(1.3)}
+  .touch{grid-area:ctrl;display:flex;justify-content:space-between;align-items:center;width:100%;padding:4px 6px 0;box-sizing:border-box}
+  .dpad button,.hub{background:#2e4549}
+  .ab{margin-right:6px}
+  .ghost{white-space:nowrap;padding:6px 10px;font-size:12px}
+  .keys-panel,header,.brand,.grille{display:none}   /* last, so .panel's display:flex can't bring the key list back */
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>勇者<span>鬥磚塊</span></h1>
+    <span class="sub">消掉磚塊幫勇者打倒怪物，每一關最後迎戰魔王</span>
+  </header>
+  <div class="game" id="game">
+    <div class="side">
+      <div class="panel" id="hold-p"><div class="label">暫存 Hold</div><canvas id="hold"></canvas></div>
+      <div class="panel stats">
+        <div><div class="label">分數</div><div class="stat" id="score">0</div></div>
+        <div><div class="label">關卡 Lv</div><div class="stat" id="level">1</div></div>
+        <div><div class="label">層數</div><div class="stat" id="lines">0</div></div>
+      </div>
+    </div>
+    <div class="stage">
+    <canvas id="lane"></canvas>
+    <div class="board-box">
+      <canvas id="board"></canvas>
+      <canvas id="fx"></canvas>
+      <div class="overlay" id="overlay">
+        <canvas id="pausebg" aria-hidden="true"></canvas>
+        <h2 id="ov-title">勇者鬥磚塊</h2>
+        <p id="ov-text">排滿一整層磚塊，勇者就會出手打倒眼前的怪物。每 10 層一關，最後有魔王等著你。</p>
+        <button class="primary" id="start">開始冒險</button>
+        <p id="best" class="sub"></p>
+        <div style="display:flex;gap:8px">
+          <button class="ghost" id="music-btn">音樂：開</button>
+          <button class="ghost" id="sound-btn">音效：開</button>
+        </div>
+      </div>
+    </div>
+    </div>
+    <div class="side">
+      <div class="panel" id="next-p"><div class="label">接下來</div><canvas id="next"></canvas></div>
+      <div class="pills">
+        <div class="cluster"><button data-a="hold" aria-label="暫存"></button><span class="cap">SELECT 暫存</span></div>
+        <div class="cluster"><button data-a="pause" aria-label="開始或暫停"></button><span class="cap">START 暫停</span></div>
+      </div>
+      <div class="panel keys keys-panel">
+        <div class="label">操作</div>
+        <b>← →</b> 移動<br><b>↓</b> 加速<br><b>↑</b> 直落<br><b>X</b> 順轉<br><b>Z</b> 逆轉<br>
+        <b>C</b> 暫存<br><b>P</b> 暫停
+      </div>
+    </div>
+  </div>
+  <div class="touch" id="touch">
+    <div class="brand" aria-hidden="true">勇者鬥磚塊<small>POCKET QUEST</small></div>
+    <div class="cluster pad-l">
+      <div class="dpad">
+        <button data-a="drop" class="up" aria-label="直接落下">▲</button>
+        <button data-a="left" class="lf" aria-label="左移">◀</button>
+        <span class="hub"></span>
+        <button data-a="right" class="rt" aria-label="右移">▶</button>
+        <button data-a="soft" class="dn" aria-label="緩降">▼</button>
+      </div>
+      <span class="cap">▲ 直落　▼ 緩降</span>
+    </div>
+    <div class="pad-r">
+    <div class="ab">
+      <div class="cluster"><button data-a="ccw" aria-label="逆時針旋轉">B</button><span class="cap">↺ 逆轉</span></div>
+      <div class="cluster"><button data-a="rot" aria-label="順時針旋轉">A</button><span class="cap">↻ 順轉</span></div>
+    </div>
+    </div>
+    <div class="grille" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
+</div>
+
+<script>
+(() => {
+const COLS = 10, ROWS = 20;
+// Glazes: celadon, cobalt, persimmon, mustard, plum, iron-red, sky
+const GLAZE = {
+  I:["#7fc4c9","#4d9aa1"], O:["#e3b443","#b4851c"], T:["#9a5a8c","#6c3a62"],
+  S:["#93c6a4","#5f9a74"], Z:["#c4523a","#8f3624"], J:["#3f6db5","#284b85"], L:["#e58449","#b4592a"]
+};
+const SHAPES = {
+  I:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  O:[[1,1],[1,1]],
+  T:[[0,1,0],[1,1,1],[0,0,0]],
+  S:[[0,1,1],[1,1,0],[0,0,0]],
+  Z:[[1,1,0],[0,1,1],[0,0,0]],
+  J:[[1,0,0],[1,1,1],[0,0,0]],
+  L:[[0,0,1],[1,1,1],[0,0,0]]
+};
+const KICKS = [[0,0],[-1,0],[1,0],[0,-1],[-2,0],[2,0],[-1,-1],[1,-1]];
+const LINE_PTS = [0,100,300,500,800];
+
+const $ = id => document.getElementById(id);
+const bc = $("board"), hc = $("hold"), nc = $("next");
+const bx = bc.getContext("2d"), hx = hc.getContext("2d"), nx = nc.getContext("2d");
+let cell = 28, dpr = Math.max(1, window.devicePixelRatio || 1);
+
+let grid, cur, holdType, canHold, queue, bag, score, lines, level, state, dropAcc, lockT, lockMoves, clearing, clearT, last;
+let best = 0;
+try { best = +localStorage.getItem("tilekiln-best") || 0; } catch(e) {}
+
+const rot = m => m[0].map((_, i) => m.map(r => r[i]).reverse());
+const rotCCW = m => m[0].map((_, i) => m.map(r => r[r.length - 1 - i]));
+
+function nextFromBag(){
+  if (!bag.length) { bag = Object.keys(SHAPES); for (let i = bag.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [bag[i], bag[j]] = [bag[j], bag[i]]; } }
+  return bag.pop();
+}
+function spawn(type){
+  const m = SHAPES[type].map(r => r.slice());
+  cur = { type, m, x: ((COLS - m[0].length) / 2) | 0, y: type === "I" ? -1 : 0 };
+  lockT = 0; lockMoves = 0;
+  if (collide(cur.m, cur.x, cur.y)) gameOver();
+}
+function collide(m, x, y){
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) {
+    if (!m[r][c]) continue;
+    const gx = x + c, gy = y + r;
+    if (gx < 0 || gx >= COLS || gy >= ROWS) return true;
+    if (gy >= 0 && grid[gy][gx]) return true;
+  }
+  return false;
+}
+const grounded = () => collide(cur.m, cur.x, cur.y + 1);
+function touchLock(){ if (grounded() && lockMoves < 15) { lockT = 0; lockMoves++; } }
+
+function move(dx){ if (!collide(cur.m, cur.x + dx, cur.y)) { cur.x += dx; touchLock(); return true; } return false; }
+function rotate(dir){
+  if (cur.type === "O") return;
+  const m = dir > 0 ? rot(cur.m) : rotCCW(cur.m);
+  for (const [kx, ky] of KICKS) if (!collide(m, cur.x + kx, cur.y + ky)) { cur.m = m; cur.x += kx; cur.y += ky; touchLock(); fxRotate(); return; }
+}
+function soft(){ if (!grounded()) { cur.y++; score += 1; dropAcc = 0; updateHUD(); } }
+function hardDrop(){
+  const y0 = cur.y; let n = 0;
+  while (!grounded()) { cur.y++; n++; }
+  score += n * 2; fxTrail(cur, y0, n);
+  hardFlag = true; lock(); hardFlag = false;
+}
+function hold(){
+  if (!canHold) return;
+  const t = cur.type;
+  if (holdType) spawn(holdType); else spawn(queue.shift()), queue.push(nextFromBag());
+  holdType = t; canHold = false; drawSide();
+}
+function lock(){
+  for (let r = 0; r < cur.m.length; r++) for (let c = 0; c < cur.m[r].length; c++) {
+    if (!cur.m[r][c]) continue;
+    const gy = cur.y + r;
+    if (gy < 0) { gameOver(); return; }
+    grid[gy][cur.x + c] = cur.type;
+  }
+  fxLand(cur, hardFlag);
+  const full = [];
+  grid.forEach((row, i) => { if (row.every(Boolean)) full.push(i); });
+  if (full.length) {
+    const prevLevel = level;
+    clearing = full; clearT = 0;
+    pickElem(); elemBurst(full);
+    lines += full.length;
+    score += LINE_PTS[full.length] * level;
+    level = 1 + Math.floor(lines / 10);
+    battleHit(full.length, level > prevLevel);
+    sfxClear(full.length);
+    if (level > prevLevel) { fireworks(level); sfxLevel(.35); }
+  }
+  cur = null; canHold = true;
+  updateHUD();
+  if (!full.length) advance();
+}
+function advance(){ spawn(queue.shift()); queue.push(nextFromBag()); drawSide(); }
+
+function gameOver(){
+  state = "over"; cur = cur || null;
+  if (score > best) { best = score; try { localStorage.setItem("tilekiln-best", best); } catch(e) {} }
+  hero.down = true;
+  showOverlay("勇者倒下了", `這趟冒險打到第 ${level} 關、擊敗 ${kills} 隻怪物，拿下 ${score.toLocaleString()} 分。`, "再次出發");
+}
+function showOverlay(t, p, btn){
+  $("ov-title").textContent = t; $("ov-text").textContent = p; $("start").textContent = btn;
+  $("best").textContent = best ? `最高紀錄 ${best.toLocaleString()}` : "";
+  $("overlay").dataset.mode = ""; $("overlay").hidden = false; $("start").focus();
+}
+
+function reset(){
+  grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  bag = []; queue = [nextFromBag(), nextFromBag(), nextFromBag()];
+  holdType = null; canHold = true; score = 0; lines = 0; level = 1;
+  dropAcc = 0; clearing = null; state = "play"; mStep = 0;
+  resetBattle();
+  $("overlay").hidden = true;
+  advance(); updateHUD();
+}
+function togglePause(){
+  if (state === "play") { state = "pause"; showOverlay("暫停中", "勇者在營火邊休息一下。", "繼續冒險"); $("overlay").dataset.mode = "pause"; }
+  else if (state === "pause") { state = "play"; $("overlay").hidden = true; }
+}
+$("start").addEventListener("click", () => { if (state === "pause") togglePause(); else reset(); bc.focus?.(); });
+
+function updateHUD(){
+  $("score").textContent = score.toLocaleString();
+  $("level").textContent = level; $("lines").textContent = lines;
+}
+
+/* ---------- drawing ---------- */
+function tile(ctx, x, y, s, type, alpha = 1){
+  const [hi, lo] = GLAZE[type], p = Math.max(1, s * .06), r = s * .18;
+  ctx.globalAlpha = alpha;
+  const g = ctx.createLinearGradient(x, y, x + s, y + s);
+  g.addColorStop(0, hi); g.addColorStop(1, lo);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.roundRect(x + p, y + p, s - 2 * p, s - 2 * p, r); ctx.fill();
+  // glaze shine
+  ctx.fillStyle = "rgba(255,255,255,.28)";
+  ctx.beginPath(); ctx.ellipse(x + s * .36, y + s * .3, s * .2, s * .09, -0.5, 0, Math.PI * 2); ctx.fill();
+  // kiln crackle edge
+  ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(x + p + .5, y + p + .5, s - 2 * p - 1, s - 2 * p - 1, r); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+function ghostY(){ let y = cur.y; while (!collide(cur.m, cur.x, y + 1)) y++; return y; }
+
+function drawBoard(){
+  const w = COLS * cell, h = ROWS * cell;
+  bx.fillStyle = "#0b2326"; bx.fillRect(0, 0, w, h);
+  bx.strokeStyle = "#173c40"; bx.lineWidth = 1;
+  for (let c = 1; c < COLS; c++) { bx.beginPath(); bx.moveTo(c * cell + .5, 0); bx.lineTo(c * cell + .5, h); bx.stroke(); }
+  for (let r = 1; r < ROWS; r++) { bx.beginPath(); bx.moveTo(0, r * cell + .5); bx.lineTo(w, r * cell + .5); bx.stroke(); }
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c]) tile(bx, c * cell, r * cell, cell, grid[r][c]);
+  if (clearing) {
+    drawClearFx(bx, w);
+  }
+  if (cur) {
+    const gy = ghostY();
+    bx.strokeStyle = GLAZE[cur.type][0]; bx.globalAlpha = .55; bx.lineWidth = 2;
+    eachCell(cur.m, (r, c) => { if (gy + r >= 0) { bx.beginPath(); bx.roundRect(( cur.x + c) * cell + 4, (gy + r) * cell + 4, cell - 8, cell - 8, cell * .15); bx.stroke(); } });
+    bx.globalAlpha = 1;
+    eachCell(cur.m, (r, c) => { if (cur.y + r >= 0) tile(bx, (cur.x + c) * cell, (cur.y + r) * cell, cell, cur.type); });
+  }
+}
+function eachCell(m, f){ for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) if (m[r][c]) f(r, c); }
+function drawMini(ctx, type, ox, oy, s, boxW, boxH, alpha){
+  const m = SHAPES[type];
+  let minR = 9, maxR = -1, minC = 9, maxC = -1;
+  eachCell(m, (r, c) => { minR = Math.min(minR, r); maxR = Math.max(maxR, r); minC = Math.min(minC, c); maxC = Math.max(maxC, c); });
+  const pw = (maxC - minC + 1) * s, ph = (maxR - minR + 1) * s;
+  const x0 = ox + (boxW - pw) / 2, y0 = oy + (boxH - ph) / 2;
+  eachCell(m, (r, c) => tile(ctx, x0 + (c - minC) * s, y0 + (r - minR) * s, s, type, alpha));
+}
+const isNarrow = () => matchMedia("(max-width:600px), (hover:none)").matches;
+function drawSide(){
+  const narrow = isNarrow();
+  const s = narrow ? 12 : Math.round(cell * .62), bw = s * 4 + 8, bh = s * 2 + 10;
+  const n = 3, nw = bw, nh = bh * n;   // next 3 pieces, stacked
+  sizeCanvas(hc, nw, nh); sizeCanvas(nc, nw, nh);   // hold box matches the next box so both sides line up
+  hx.clearRect(0, 0, nw, nh); nx.clearRect(0, 0, nw, nh);
+  if (holdType) drawMini(hx, holdType, 0, 0, s, nw, nh, canHold ? 1 : .35);
+  if (queue) queue.slice(0, n).forEach((t, i) => drawMini(nx, t, 0, i * bh, i ? s * .85 : s, bw, bh, i ? .8 : 1));
+}
+function sizeCanvas(cv, w, h){
+  cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + "px"; cv.style.height = h + "px";
+  cv.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function layout(){
+  const narrow = isNarrow(), g = $("game"), wr = document.querySelector(".wrap");
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  let availH, availW;
+  if (narrow) {   // phones: lane spans the full width; the board gets what the two side columns leave
+    const colW = parseFloat(getComputedStyle(wr).getPropertyValue("--col")) || 76;
+    laneW = wr.clientWidth; PX = laneW >= 340 ? 4 : 3; laneH = PX * 33;
+    availW = laneW - 2 * colW - 16; availH = wr.clientHeight - laneH - $("touch").offsetHeight - 24;
+  } else {
+    PX = 3; laneH = 100;
+    availH = g.clientHeight - 10 - laneH - 6; availW = g.clientWidth - 10 - 2 * 120 - 32;
+  }
+  cell = Math.max(10, Math.min(34, Math.floor(Math.min(availH / ROWS, availW / COLS))));
+  if (!narrow) laneW = COLS * cell;
+  sizeCanvas(bc, COLS * cell, ROWS * cell);
+  sizeCanvas(fc, COLS * cell, ROWS * cell);
+  sizeCanvas($("pausebg"), COLS * cell, ROWS * cell);
+  sizeCanvas(lc, laneW, laneH);
+  drawSide();
+  if (grid) drawBoard();
+}
+addEventListener("resize", layout);
+matchMedia("(max-width:600px), (hover:none)").addEventListener?.("change", layout);
+document.fonts?.ready.then(layout);
+
+/* ---------- hero vs monsters lane ---------- */
+let laneW = 300, laneH = 100, PX = 3;   // set by layout(): full width + bigger pixels on phones
+const lc = $("lane"), lx = lc.getContext("2d");
+const fc = $("fx"), fxx = fc.getContext("2d");
+const OUTLINE = "#1a1420", C = { line: OUTLINE };
+const FW = ["#fc3c3c","#fcd83c","#3cbcfc","#80fc3c","#fc74b4","#ffffff"];
+/* SPRITES-START */
+// shared pixel colours; each monster adds its own a/b/c/d body colours
+const BASE = { e:"#1a1420", w:"#ffffff", r:"#e0403c", y:"#fcd83c", p:"#f490b0", o:"#f08a30", k:"#a8b0b8", K:"#5c646c",
+  g:"#5cc85c", G:"#2f7a3a", n:"#7a4a24", N:"#4a2c14", s:"#f4c29a" };
+// hero: chibi, facing the viewer — spiky black hair, gold circlet with a blue gem, red cape, sword and round shield
+const HERO_PAL = { ...BASE, k:"#22222c", K:"#4a4a60", q:"#3cbcfc", s:"#f6c7a0", S:"#c8785a", p:"#f4a0a0",
+  a:"#3a6ad0", A:"#22408a", y:"#fcd83c", Y:"#c08a1a", d:"#4aa0e0", w:"#f0f4f8", W:"#9aa8b8",
+  c:"#d0343c", C:"#8a1e28", n:"#9a6a34", b:"#6a4020", B:"#3a2410" };
+const HERO_ROWS = [
+  ".wW...k....k....k.....",
+  ".wW..kk...kk...kk.....",
+  ".wW.kkkk.kkKk.kkkk....",
+  ".wWkkkkkkkKkkkkkkkkk..",
+  ".wWkkkKkkkkkkkkkKkkkk.",
+  ".wW.kyyyyyqqyyyyyk....",
+  ".wW.kYYYYYqqYYYYYk....",
+  ".wW.kksssssssssskk....",
+  ".wW.kkskksssskkskk....",
+  ".wW.kkseesssseeskk....",
+  ".wW..kseesssseesk.....",
+  ".wW...pssssssssp......",
+  ".wW...SsssSSsssS......",
+  "yyyy.cAaaaaaaA.yyyyy..",
+  ".sssAaaaaaaaaaydddddy.",
+  "..n.cAaaaaaaaayddwddy.",
+  "..n.cAaaaaaaaaydwwwdy.",
+  "...CcAaaaaaaaAyddwddy.",
+  "...CcyyyyYYyyyydddddy.",
+  "..CCcckkkkkkkc.ydddy..",
+  "..CCcckkkkkkkccCyyy...",
+  "..CCccckk..kkcCC......",
+  "...CCcnnn..nnnc.......",
+  "......bbb..bbb........",
+  ".....BBBB..BBBB.......",
+];
+// 30 monsters, weakest first. Each row is the LEFT half; it is mirrored to 16 px wide.
+const MONSTERS = [
+ ["果凍球","5fc8e8,2a7fa8,d8f6ff",["........","........","........","........","........","......bb","....bbaa","...baaaa","..bacaaa","..bccaaa",".baaaeaa",".baaaeaa",".baaaaaa",".baaaaae","..baaaaa","...bbbbb"]],
+ ["夜蝙蝠","8a5ac0,4a2a70,e090c0",["........","........","........","........","b.......","bb...b..","bab..bb.","baab.baa","bcaabaea","bccaaaaa","bcbbaaew","bb..baaa","b....ba.","......b.","........","........"]],
+ ["毒蘑菇","e0403c,8a2420,ffffff,f0dcc0",["........","........","........",".....bbb","...bbaaa","..baacca",".baaacca",".bccaaaa","bbccaaaa","bbbbbbbb","...ddddd","...ddedd","...ddddd","...dddee","...ddddd","..nnn..."]],
+ ["藍鬼火","7ae0ff,2a90c0,ffffff",["........",".......b","......ba",".....bac","....baac","...b.acc","...baacc","..baaccc","..bacwec","..bacwec","..baaccc","...baacc","....baac",".....bba","........","........"]],
+ ["獨眼蟲","9ad04a,4a7a20,d8f090",["........","........","....b...",".....b..","......bb","....bbaa","...baaaa","..baawww","..baawee","..baawee","..baawww","..bcaaaa","..bccaaa","...bbaba","...b.b.b","........"]],
+ ["骷髏頭","f0ece0,9a9488,ffffff",["........","........","....bbbb","...baaaa","..baacaa","..bacaaa","..baaaaa","..baeeea","..baeeea","..baaaae","...baaaa","...bawaw","...bbebe","....bbbb","........","........"]],
+ ["小石怪","a89a88,6a5e50,d0c4b0",["........","........","........","....bbbb","...baaaa","...baeaa","...baaaa","..bbbbbb",".baacaaa","baaccaaa","baaaaaba","bbbaaaab","...baab.","...baab.","..bbbbb.","........"]],
+ ["食人花","e05080,902848,ffd0e0",["........","..bb..bb",".baab.ba",".baacbba","..baaaaa",".bbaeeee","baaewewe","baaeeeee","baaeeepp",".baaewew","..baaaaa","......Gg","......Gg","...GG.Gg","..GggGGg","...GGGGG"]],
+ ["白幽靈","e8eef8,8a9ab8,ffffff",["........","........",".....bbb","....baaa","...baaaa","...baeea","...baeea","..baaaaa","..baaaae","..baaaae",".baaaaaa","baaaaaaa","baaaaaaa","bab.baab","b...bb..","........"]],
+ ["鉗子蟹","e05a3c,902a1c,ffa080",["........","........",".bb.....","baab....","ba.b....","baab..e.",".bb...b.","..b..bbb","..bbbaaa","...baaca","..baacaa","..baaaae","...baaaa","..b.bbbb",".b..b..b","........"]],
+ ["暗影蛛","6a5a80,3a2a4a,a898c0",["........","........","........","....bbbb","...baaaa","b..baaca",".b.bacca","..bbaaaa","bbbbarar","...baaaa","..bbaaaw",".b.bbaaa","b...bbbb","b..b....","..b.....","........"]],
+ ["夜梟","9a6a3a,5a3a1a,e8c890",["........","........","..b.....","..bbbbbb","..baaaaa","..bwwwaa","..bwyewa","..bwwwwa","..baaaao","..bcaaao","..bccccc","..bcacac","..bccccc","...bcccc","....o.o.","........"]],
+ ["仙人掌怪","5cc85c,2f7a3a,a8f0a0",["......pp",".....bbb","....baaa","....baca",".bb.baaa",".ab.baea",".ab.baaa",".abbbaae","..bbbaaa","....baca","....baaa","....baca","....baaa","..nnnnnn","...nNNNN","...nnnnn"]],
+ ["樹樁精","9a6a3a,5a3a1a,c89a60",["........","........","...g.g.g","..bbbbbb",".bcccccc",".bcbbbcc",".bbbbbbb",".baaaaaa",".baeeaba",".baaabaa",".baaaaee",".baabaaa",".baaaaba","bbabaaaa","b.bbabbb","..b..b.."]],
+ ["鐵甲蟲","4a8ab0,204a6a,a8e0ff",["........",".......b","......ba","......ba","....bbba","...baaaa","..baayaa","..bbbbbb",".bacaaab","baccaaab","bacaaaab","baaaaaab",".baaaaab","..bbbbbb",".b.b..b.","b..b...."]],
+ ["紫毒蛙","a050c0,5a2070,e0a0f0",["........","........","........","..bbb...",".bwwwb..",".bwewb..","..bbbbbb",".baaaaaa","baayaaaa","baaaaaaa","baeeeeee","bacccccc",".bcccccc","..bbbbbb",".bab..ba","bbb...bb"]],
+ ["寶箱怪","b07a3a,5a3a1a,d8a060",["........","........","..bbbbbb",".baaaaaa",".baayaaa",".byyyyyy",".bewewew",".beereee",".beeeepp",".bewewew",".byyyyyy",".baaaayy",".baaaaaa",".byyyyyy",".bbbbbbb","........"]],
+ ["南瓜頭","f08a30,a04a10,ffc070",[".......G",".......G","....bbbb","..bbaaba",".baacaba",".bacabaa","baayabaa","bayyybaa","baaaaaba","bayyyyyy","baayyaya",".baaabaa",".bbaabaa","..bbbbbb","........","........"]],
+ ["火焰精","f08a30,c03018,fcd83c",["...b....","...bb..b","..bab.ba","..baabaa",".baacaac",".bacccac","bacccccc","bacceccc","bacceccc","baccccee",".baccccc","..baaaaa","...bbbbb","........","........","........"]],
+ ["冰晶精","a0e0ff,3a8ac0,ffffff",[".......b","......bc",".....bca","b...bcaa",".b.bcaaa","..bcaaaa","..bcaeaa","..bcaeaa",".bbcaaaa","b..bcaaa","....bcaa",".....bca","......bc",".......b","........","........"]],
+ ["粉章魚","e06a8a,902a4a,ffb0c8",["........",".....bbb","....baaa","...bacca","...bacaa","...baaaa","...bweaa","...bweaa","...baaaa","..baaaaa","..baabaa",".ba.ba.b","ba..b..b","b..b..b.","........","........"]],
+ ["飛眼魔","f0e8e0,9a8a88,ffffff,8a4ab0",["........","........","d.......","dd...bbb","ddd.baaa","dddbaarr","dddbarre","ddbbarre","d..baarr","....baaa",".....bbb","........","........","........","........","........"]],
+ ["空盔甲","a8b0b8,5c646c,e8eef0",[".......r","......rr",".....bbb","....baca","....baaa","....beye","....baaa","..bbbbbb",".baacaab",".bacaaab","..baaaab","..byyyyy","..baaaab","..baab..","..baab..",".bbbbb.."]],
+ ["灰狼頭","8a8a9a,4a4a5a,d0d0e0",["........","..b.....","..bb....","..bcab..","..bcaabb","..baaaaa",".baayeaa",".baaaaaa","baaacccc","baacccce",".bacweee","..bccccc","...bbbbb","........","........","........"]],
+ ["雷雲怪","7a8aa8,3a4a68,c8d4e8",["........","...bbb..","..baaabb",".baacaaa","bacaaaaa","baaaeaaa","baaaaaee",".bbaaaaa","..bbbbbb","....y...","...yy...","....y...","...y....","........","........","........"]],
+ ["小惡魔","c03838,701818,f07070",["........",".K......",".KK..bbb","..KKbaaa","...baaaa","...bayaa","...baaaa","...baewe","b...baaa","bb.bbaaa",".bbaaaaa","...baaaa","...bab..","..bbb...","........","........"]],
+ ["雙頭蛇","7ab040,3a6a1a,d0e890",["........",".bbb....","baaab...","bayab...","baaab...","rbaab...","..bab...","..baab..","...baab.","....baab","....bcaa","...bacca","..baaaaa",".baacaaa","bbbbbbbb","........"]],
+ ["木乃伊","e0d8c0,8a8270,fff8e0",["........","....bbbb","...baaca","...bbbbb","...baraa","...bbbbb","...bacaa","..bbbbbb","baaacaaa","bbbbbbbb","..bacaaa","..bbbbbb","..baab..","..bbbb..","..baab..",".bbbbb.."]],
+ ["機械兵","8a9aaa,3a4a5a,c8d8e8",[".......r",".......b","....bbbb","....bacc","....baaa","....beer","....baaa","....baaa","..bbbbbb",".bbaaaaa","bab.baaa","bab.baca","...bbbbb","....bab.","...bbbb.","........"]],
+ ["暗黑法師","4a3a8a,201040,7a6ab0,c070ff",["......bb",".....baa","....baaa","...baeee","...baeye","...baeee","..baaaaa","dbaacaaa","ddbacaaa",".baaacaa","baaaacaa","baaaaaca","bbbbbbbb","........","........","........"]],
+];
+// 10 bosses, left half mirrored to 20 px wide
+const BOSSES = [
+ ["巨石魔像","8a7a6a,4a3e32,c0b0a0",["..........","......bbbb",".....baaaa",".....bacaa",".....barra",".....baaaa",".....baaee","..bbbbbbbb",".baacaaaab","baaccaaaab","baacaggaab","baaaaaaaab","bacbaaaaab","bbbb.baaaa",".....baaaa","....baab..","....baab..","...bbbbb..","..........",".........."]],
+ ["骷髏王","f0ece0,9a9488,ffffff,8a2a3a",["....y..y.y","....yy.yyy","....yyyyyy","....yyryyy","....bbbbbb","...baaaaaa","...baacaaa","...baeeeaa","...baereaa","...baaaaae","....baaaaa","....bawawa","....bbebeb",".dddddbbbb","dddbabaaba","dddbaabaaa","ddddbabaaa","dddddbbbbb","dddddd....",".........."]],
+ ["三頭龍","3a9a6a,1a5a3a,9ae0b0",["......bbbb",".bb..baaaa","baab.bayaa","bayabbaaaa","rbaab.bwaw","..bab..bbb","...bab.bab","....babbaa",".....baaca","....baacca","...baacccc","..baaacccc",".baaaacccc",".baaaaccca","..baaaaaaa","...bab..ba","..bbbb.bbb","..........","..........",".........."]],
+ ["惡魔領主","9a2a3a,4a0a18,e06070,5a2a5a",["....k.....","....kk....",".....kk.bb","d.....kbaa","dd....baaa","ddd...byya","dddd..baaa","ddddd.bwew","dddddbbaaa","ddddbaacaa","dddbaaccaa","dd.baacaaa","d..byyyyyy","...baaaaaa","....baab..","....baab..","...bbbbb..","..........","..........",".........."]],
+ ["千眼魔","7a3a9a,3a1a5a,c080e0",[".ww....ww.",".we....ew.","..b....b..","...b...bbb","....bbbaaa","...baaacaa","..baaccaaa",".baacaawww",".baaaawwrr","baaaawwree","baaaawwree","baaaaawwrr",".baaaaawww",".baaaaaaaa","..baewewew","...baeeeee","....bbaaaa","......bbbb","..........",".........."]],
+ ["冰霜巨人","8ab0d8,3a5a8a,e0f0ff",[".....c.c.c",".....ccccc",".....baaaa",".....baaaa",".....bayaa",".....baaaa",".....bwwww","....bwwwww","..bbbbwwww",".baaabbwww","baacaaaabw","baaccaaaaa","bbbbaaaaaa","baab.baaaa","bbbb.baaaa",".....bbbbb","....baaab.","....baab..","...bbbbb..",".........."]],
+ ["地獄魔犬","6a3a3a,2a1010,a06a5a",["..o.......",".oo...o...","oooo.oyo..","ooyooooo.o",".ooobbbbbb","ooobaaaaaa","oobaacaaaa","oobaayyaaa","oobaaaaaaa",".obaaacccc","..baacccbb","..bacweeee","..bacweerr","...bacwwww","....bccccc",".....bbbbb","..........","..........","..........",".........."]],
+ ["深海章魚王","3a6aaa,1a3a6a,8ab8f0",["......y.yy","......yyyy",".....bbbbb","....baaaaa","...baacaaa","...bacaaaa","...baaaaaa","...bawwaaa","...baweaaa","...baaaaaa","...baaaaaa","..baaaaaaa",".baabaabaa","bab.bab.ba","b..ba.ba.b","bb..ba.ba.","..........","..........","..........",".........."]],
+ ["死神","4a4a62,141420,7a7a9a",[".......bbb","......baaa",".....baaaa","....baawww","....bawrww","....bawwwe","....baawww","...baaaaaa","..baacaaaa",".baacaaaaa","wbacaaaaaa","ww.baaaaaa","...baacaaa","..baacaaaa",".baacaaaaa","bab.babbab","..........","..........","..........",".........."]],
+ ["深淵魔龍","5a2a8a,200a40,a060d0,4a2a6a",["...k......","...kk.....","....kk.bbb","d....kbaaa","dd...baaaa","ddd..byyaa","dddd.baaaa","ddddd.bacc","ddddd.bcec","dddddbbwww","ddddbaaaaa","dddbaaccca","ddbaaacccc","d.baaacccc","..baaacccc","..baabaccc","..bab..baa",".bbbb.bbbb","..........",".........."]],
+];
+// the hero's dark twin: same pixels, mirrored, villain colours (white hair, red eyes, crimson blade)
+const EVIL_PAL = { k:"#d8d8e8", K:"#ffffff", q:"#ff2040", s:"#b8a8c8", S:"#7a6a8a", p:"#9a7aa8", e:"#ff2040",
+  a:"#4a1a5a", A:"#280a32", y:"#7a7a88", Y:"#44444f", d:"#2e1a38", w:"#ff4060", W:"#901830",
+  c:"#6a1a7a", C:"#3a0a48", n:"#3a2a2a", b:"#2e2234", B:"#160c1a" };
+BOSSES.push(["黑暗勇者", EVIL_PAL, HERO_ROWS, true]);
+function foeSprite(def, pal){
+  return def[3] ? makeSprite(def[2].map(r => [...r].reverse().join("")), pal, false, true) : makeSprite(def[2], pal, true);
+}
+// game over: the hero turns into an upright coffin — gold rim and cross on a blue lid
+const COFFIN_ROWS = ["..yyyyy",".yyuuuu",".yuuuuu","yyuuuuu","yuuuuuy","yuuuuuy","yuuuuuy","yuuyyyy","yuuyyyy","yuuuuuy",".yuuuuy",".yuuuuy",".yuuuuy",".yuuuuy",".yuuuuy","..yuuuy","..yuuuy","..yuuuu","..yuuuu","...yuuu","...yyyy"];
+const COFFIN_PAL = { ...BASE, y:"#fcd83c", u:"#2a4ab0" };
+// walking: two frames that swap which boot is lifted (rows 21+ replace the standing legs)
+const HERO_WALK = [
+  ["..CCccnnn..kkcCC......","...CCcbbb..nnnc.......",".....BBBB..bbb........","...........BBBB......."],
+  ["..CCccckk..nnnCC......","...CCcnnn..bbbc.......","......bbb..BBBB.......",".....BBBB............."],
+].map(legs => HERO_ROWS.slice(0, 21).concat(legs));
+// attack pose: same hands as walking (sword left, shield right), sword removed — the blade is drawn by code at any angle
+const HERO_STRIKE = HERO_WALK[0].map((r, y) => y <= 16 ? [...r].map((ch, x) => x <= 3 && "wWyn".includes(ch) ? "." : ch).join("") : r);
+const SWORD_PIVOT = [3, 15];   // the sword hand, in sprite pixels (outline included)
+const BLADES = {   // blade colours per element of the current line clear
+  slash:   { core: "#ffffff", edge: "#a8b4c0", glow: null,      trail: "#ffffff", arc: ["#ffffff", "#c8e4f4", "#6a9ac0"] },
+  fire:    { core: "#fff0a0", edge: "#f08a30", glow: "#e0403c", trail: "#f08a30", arc: ["#fff6c0", "#f08a30", "#b8301c"] },
+  ice:     { core: "#ffffff", edge: "#7ac8f0", glow: "#bfe9ff", trail: "#7ae0ff", arc: ["#ffffff", "#9ae4ff", "#3a8ac0"] },
+  thunder: { core: "#ffffff", edge: "#ffd400", glow: "#fff27a", trail: "#ffd400", arc: ["#ffffff", "#ffd400", "#b88a10"] },
+  holy:    { core: "#ffffff", edge: "#dfe8f8", glow: "#f4f8ff", trail: "#ffffff", arc: ["#ffffff", "#eef4ff", "#9ab0d8"] },
+  dark:    { core: "#ecd4ff", edge: "#8a2ac8", glow: "#3a0a5a", trail: "#9a3ae0", arc: ["#f0d8ff", "#9a3ae0", "#3a0a5a"] },
+};
+function drawSword(ctx, ox, oy, px, deg, elem, ghost){
+  const B = BLADES[elem] || BLADES.slash, a = deg * Math.PI / 180, dx = Math.cos(a), dy = -Math.sin(a), nx = -dy, ny = dx, L = 14;
+  const [ax, ay] = SWORD_PIVOT;
+  const dot = (x, y, col) => { ctx.fillStyle = col; ctx.fillRect(ox + Math.round(x) * px, oy + Math.round(y) * px, px, px); };
+  const along = (t0, t1, off, col) => { for (let t = t0; t <= t1; t += .5) dot(ax + dx * t + nx * off, ay + dy * t + ny * off, col); };
+  if (ghost) { ctx.globalAlpha = ghost; along(L * .4, L, 0, B.trail); along(L * .4, L, 1, B.trail); ctx.globalAlpha = 1; return; }   // swing trail
+  if (B.glow) {   // elemental aura hugging the blade
+    ctx.globalAlpha = .6;
+    for (let t = 1.5; t <= L + 1.5; t += .5) {
+      const f = elem === "fire" || elem === "thunder" ? Math.random() * 1.6 : 0;
+      dot(ax + dx * t - nx * (2 + f), ay + dy * t - ny * (2 + f), B.glow); dot(ax + dx * t + nx * (3 + f), ay + dy * t + ny * (3 + f), B.glow);
+    }
+    ctx.globalAlpha = 1;
+  }
+  for (const [ox2, oy2] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) for (let t = 1.5; t <= L; t += .5) { dot(ax + dx * t + ox2, ay + dy * t + oy2, OUTLINE); dot(ax + dx * t + nx + ox2, ay + dy * t + ny + oy2, OUTLINE); }
+  along(-2.5, -.5, 0, "#7a4a24");                                                     // hilt
+  for (let k = -2; k <= 3; k++) dot(ax + dx * .8 + nx * k, ay + dy * .8 + ny * k, "#fcd83c");   // guard
+  along(1.5, L, 0, B.core); along(1.5, L, 1, B.edge);                               // blade
+}
+function swingAngle(p){   // raise the sword up and back, cut down across toward the monster, hold, recover
+  return p < .3 ? 90 + 45 * (p / .3) : p < .48 ? 135 - 190 * ((p - .3) / .18) : p < .75 ? -55 : -55 + 145 * ((p - .75) / .25);
+}
+// sword-qi crescent: a wide pixel arc around the sword hand — bright leading rim, element colour inside, tapered ends
+const ARC_RX = 30, ARC_RY = 17, ARC_TH = 7;
+function drawArc(ctx, cx, cy, px, fromDeg, toDeg, elem, alpha){
+  const C = (BLADES[elem] || BLADES.slash).arc, a0 = fromDeg * Math.PI / 180, a1 = toDeg * Math.PI / 180;
+  const steps = Math.max(2, Math.ceil(Math.abs(a0 - a1) * ARC_RX * 1.6)), seen = new Set();
+  ctx.globalAlpha = alpha;
+  for (let i = 0; i <= steps; i++) {
+    const u = i / steps, a = a0 + (a1 - a0) * u, th = ARC_TH * Math.sin(Math.PI * Math.min(1, u * .85 + .1));
+    for (let k = 0; k <= th; k += .5) {
+      const x = Math.round(Math.cos(a) * (ARC_RX - k)), y = Math.round(-Math.sin(a) * (ARC_RY - k * ARC_RY / ARC_RX)), key = x + "," + y;
+      if (seen.has(key)) continue; seen.add(key);
+      ctx.fillStyle = k < 1 ? C[0] : k < th * .55 ? C[1] : C[2];
+      ctx.fillRect(cx + x * px, cy + y * px, px, px);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+/* SPRITES-END */
+const HUE_NAMES = ["赤","橙","金","翠","碧","蒼","紫","緋"];
+function toHsl(hex){
+  const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let h = 0, s = 0;
+  if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = (mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60; }
+  return [h, s, l];
+}
+function fromHsl(h, s, l){
+  const f = n => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l); return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return "#" + [f(0), f(8), f(4)].map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+}
+function palette(spec, shift){   // body colours (a/b/c/d string, or a full colour map), optionally hue-rotated
+  const pal = { ...BASE };
+  const entries = typeof spec === "string" ? spec.split(",").map((hx, i) => ["abcd"[i], "#" + hx]) : Object.entries(spec);
+  entries.forEach(([key, col]) => {
+    if (shift && key !== "e") { const [h, s, l] = toHsl(col); col = fromHsl((h + shift) % 360, Math.max(s, .45), l); }
+    pal[key] = col;
+  });
+  return pal;
+}
+function tint(hex, dl){ const [h, s, l] = toHsl(hex); return fromHsl(h, s, Math.min(.96, Math.max(.04, l + dl))); }
+function makeSprite(rows, pal, mirror, shade = mirror){
+  if (mirror) rows = rows.map(r => r + [...r].reverse().join(""));
+  const filled = r => /[^.]/.test(r);
+  rows = rows.slice(rows.findIndex(filled), rows.length - [...rows].reverse().findIndex(filled));
+  const w = rows[0].length, h = rows.length;
+  const cv = document.createElement("canvas"); cv.width = w + 2; cv.height = h + 2;
+  const c = cv.getContext("2d");
+  const on = (x, y) => x >= 0 && y >= 0 && x < w && y < h && rows[y][x] !== ".";
+  c.fillStyle = OUTLINE;   // 1px dark outline, NES style
+  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++)
+    if (!on(x, y) && (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1))) c.fillRect(x + 1, y + 1, 1, 1);
+  const cache = {};
+  rows.forEach((r, y) => [...r].forEach((ch, x) => {
+    if (ch === ".") return;
+    let col = pal[ch] || "#ff00ff";
+    if (shade && ch !== "e" && ch !== "w") {
+      let dl = -.1 * y / h;                                         // body gets darker toward the feet
+      if (!on(x, y - 1) || !on(x - 1, y)) dl += .13;                // lit edge (top / left)
+      else if (!on(x, y + 1) || !on(x + 1, y)) dl -= .13;           // shadow edge (bottom / right)
+      else if (!on(x, y + 2) || !on(x + 2, y)) dl -= .06;
+      const key = col + Math.round(dl * 50);
+      col = cache[key] || (cache[key] = tint(col, Math.round(dl * 50) / 50));
+    }
+    c.fillStyle = col; c.fillRect(x + 1, y + 1, 1, 1);
+  }));
+  return cv;
+}
+function whiteOf(cv){   // hit-flash copy of a sprite
+  const o = document.createElement("canvas"); o.width = cv.width; o.height = cv.height;
+  const c = o.getContext("2d"); c.drawImage(cv, 0, 0);
+  c.globalCompositeOperation = "source-atop"; c.fillStyle = "#ffffff"; c.fillRect(0, 0, o.width, o.height);
+  return o;
+}
+
+const HERO = {};
+function buildHero(){ HERO.walk = HERO_WALK.map(r => makeSprite(r, HERO_PAL, false)); HERO.idle = HERO.walk[0]; HERO.coffin = makeSprite(COFFIN_ROWS, COFFIN_PAL, true); HERO.strike = makeSprite(HERO_STRIKE, HERO_PAL, false); }
+const hero = { atk: 0, t: 0, down: false };
+let foe = null, foeBox = null, nextFoeT = 0, kills = 0, lvKills = 0, laneMsg = null, laneParts = [];
+
+function spawnFoe(){
+  const remain = level * 10 - lines, boss = remain <= 4;
+  let def, shift = 0, prefix = "";
+  if (boss) { def = BOSSES[(level - 1) % BOSSES.length]; if (level > BOSSES.length) shift = 30 + Math.random() * 300; }
+  else { const k = (level - 1) * 3 + lvKills; def = MONSTERS[k % 30]; shift = Math.floor(k / 30) * 97 % 360; }
+  const pal = palette(def[1], shift);
+  if (boss && shift) prefix = HUE_NAMES[Math.round(toHsl(pal.a)[0] / 45) % 8] + "・";
+  const spr = foeSprite(def, pal);
+  foe = { name: prefix + def[0], boss, hp: boss ? remain : 1, max: boss ? remain : 1, spr, white: whiteOf(spr), pal, enter: 1, hit: 0, die: 0, t: 0 };
+  if (boss && state === "play") { laneMsg = { text: "魔王出現！", t: 1300 }; sfxBoss(); }
+}
+const ATK_MS = 800;
+function battleHit(n, leveled){
+  hero.atk = ATK_MS; hero.sparked = false;
+  // special-move name in a burst bubble, shown in the left third while the hero is over at the monster
+  laneMsg = { text: ELEMS[clearElem].name, ink: ELEMS[clearElem].ink, sub: n > 1 ? `×${n}` : "", bubble: true, t: 560, delay: 140, age: 0, seed: Math.random() * 1e9 | 0 };
+  if (!foe || foe.die > 0) return;
+  foe.hit = 280;
+  foe.hp = (leveled || !foe.boss) ? 0 : Math.max(0, level * 10 - lines);
+  if (foe.hp <= 0) {
+    foe.die = 650; kills++;
+    if (leveled) lvKills = 0; else lvKills++;
+    if (foe.boss) laneMsg.sub = "魔王擊破！";
+  } else laneMsg.sub = `-${n}`;
+}
+function drawBurst(m, W, H){
+  const pop = Math.min(1, m.age / 110), sc = pop < 1 ? .3 + .7 * pop + .25 * Math.sin(pop * Math.PI) : 1;
+  const bw = W / 6 * .9, bh = H * .4, cx = W / 6 + 10, cy = H * .5, rnd = seeded(m.seed), N = 15;
+  lx.save(); lx.translate(cx, cy); lx.scale(sc, sc); lx.globalAlpha = Math.min(1, m.t / 120);
+  const burst = () => { lx.beginPath(); for (let i = 0; i < N * 2; i++) { const a = i / (N * 2) * Math.PI * 2, r = i % 2 ? .7 + rnd() * .1 : 1 + rnd() * .22; i ? lx.lineTo(Math.cos(a) * bw * r, Math.sin(a) * bh * r) : lx.moveTo(Math.cos(a) * bw * r, Math.sin(a) * bh * r); } lx.closePath(); };
+  burst(); lx.fillStyle = "#fbfaf4"; lx.fill(); lx.lineWidth = 2.5; lx.lineJoin = "miter"; lx.strokeStyle = OUTLINE; lx.stroke();
+  // brush lettering, deliberately bigger than the bubble, two staggered lines with a deep 3D drop
+  const ch = [...m.text], l1 = ch.slice(0, 2).join(""), l2 = ch.slice(2).join("") + "！", fs = Math.round(Math.min(bw * 1.12, H * .5));
+  lx.rotate(-.13); lx.transform(1, 0, -.12, 1, 0, 0);
+  lx.font = `${fs}px "Yuji Boku", "Noto Sans TC", serif`; lx.textAlign = "center"; lx.textBaseline = "middle";
+  // each glyph is fattened with a same-colour stroke and set tighter than its width, so the letters fuse into one blob
+  const fat = fs * .05, depth = Math.max(4, fs / 9 | 0);
+  lx.lineJoin = "round";
+  [[l1, -fs * .14, -fs * .4], [l2, fs * .36, fs * .45]].forEach(([t, x, y]) => {
+    const cs = [...t], step = fs * .8, x0 = x - step * (cs.length - 1) / 2;
+    const pass = (dx, dy, col, lw, fill) => cs.forEach((c, i) => {
+      const gx = x0 + i * step + dx, gy = y + dy + (i % 2 ? fs * .07 : -fs * .04);
+      lx.lineWidth = lw; lx.strokeStyle = col; lx.strokeText(c, gx, gy);
+      if (fill) { lx.fillStyle = col; lx.fillText(c, gx, gy); }
+    });
+    for (let k = depth; k >= 1; k--) pass(k, k, m.ink[1], fat + 2, true);   // deep 3D drop
+    pass(0, 0, OUTLINE, fat + Math.max(3, fs * .07), true);                 // black rim around the fused letters
+    pass(0, 0, m.ink[0], fat, true);                                        // fat ink on top
+  });
+  lx.restore();
+  if (m.sub) {
+    lx.save(); lx.globalAlpha = Math.min(1, m.t / 120);
+    lx.font = '700 15px "Noto Sans TC", system-ui, sans-serif'; lx.textAlign = "center"; lx.textBaseline = "middle";
+    lx.lineWidth = 3; lx.strokeStyle = OUTLINE; lx.strokeText(m.sub, cx + bw * .75, cy + bh * .85); lx.fillStyle = "#ffffff"; lx.fillText(m.sub, cx + bw * .75, cy + bh * .85);
+    lx.restore();
+  }
+  lx.textAlign = "start";
+}
+function resetBattle(){ foe = null; nextFoeT = 0; kills = 0; lvKills = 0; laneMsg = null; laneParts = []; hero.down = false; hero.atk = 0; }
+
+function updateLane(dt){
+  const W = laneW, H = laneH, s = dt / 1000, floor = H - 6;
+  hero.t += dt;
+  lx.imageSmoothingEnabled = false;
+  lx.drawImage(backdrop(), 0, 0, Math.ceil(W / PX) * PX, Math.ceil(H / PX) * PX);       // field / castle backdrop
+  // monster
+  if (!foe && state !== "over") { nextFoeT -= dt; if (nextFoeT <= 0) spawnFoe(); }
+  foeBox = null;
+  if (foe) {
+    foe.t += dt; foe.enter = Math.max(0, foe.enter - dt / 450); if (foe.hit > 0) foe.hit -= dt;
+    const fw = foe.spr.width * PX, fh = foe.spr.height * PX;
+    const homeFoe = Math.min(W - fw - 4, Math.round((W * 5 / 6 - fw / 2) / PX) * PX);   // centre of the right third
+    let x = homeFoe + Math.round(foe.enter * (W - homeFoe + 8));
+    if (foe.hit > 0) x += Math.round((foe.hit / 280) * 3) * PX;   // knock-back
+    const y = floor - fh - ((foe.t / 320 | 0) % 2 ? PX : 0);
+    foeBox = { x, y, fw, fh };
+    if (foe.die > 0) {
+      foe.die -= dt;
+      if (foe.die <= 0) {   // pixel burst, then the next monster walks in
+        const cx = x + fw / 2, cy = y + fh / 2, cols = [foe.pal.a, foe.pal.c || "#ffffff", "#ffffff", foe.pal.b];
+        for (let i = 0; i < (foe.boss ? 34 : 16); i++) laneParts.push({ x: cx, y: cy, vx: (Math.random() * 2 - 1) * 110, vy: -40 - Math.random() * 90, c: cols[i % 4], life: 700 });
+        foe = null; nextFoeT = 450;
+      }
+    }
+    if (foe && !(foe.die > 0 && (foe.die / 70 | 0) % 2)) lx.drawImage(foe.hit > 140 ? foe.white : foe.spr, x, y, fw, fh);
+  }
+  // hero: lunge at the monster on every clear
+  const hw = HERO.idle.width * PX, hh = HERO.idle.height * PX;
+  const homeX = Math.max(4, Math.round((W / 6 - hw / 2) / PX) * PX);   // centre of the left third
+  let hx = homeX, hy = floor - hh, spr = HERO.walk[(hero.t / 280 | 0) % 2];   // march in place
+  if (hero.down) {
+    const cw = HERO.coffin.width * PX, ch = HERO.coffin.height * PX;
+    lx.drawImage(HERO.coffin, hx + Math.round((hw - cw) / 2 / PX) * PX, floor - ch, cw, ch);
+  } else {
+    if (hero.atk > 0) {
+      hero.atk -= dt;
+      const p = 1 - Math.max(0, hero.atk) / ATK_MS, reach = foeBox ? Math.max(homeX, foeBox.x - hw - 2) : homeX + 24;
+      const k = p < .3 ? p / .3 : p < .75 ? 1 : 1 - (p - .75) / .25;
+      hx = Math.round((homeX + k * (reach - homeX)) / PX) * PX;
+      if (p < .3) hy -= Math.round(2 * p / .3) * PX;   // jump while raising the sword
+      else if (p < .5) hy -= 2 * PX;
+      spr = null;   // drawn below with the sword at its swing angle
+      const ang = swingAngle(p), cx = hx + SWORD_PIVOT[0] * PX, cy = hy + SWORD_PIVOT[1] * PX;
+      lx.drawImage(HERO.strike, hx, hy, hw, hh);
+      // sword qi: grows behind the blade during the cut, then lingers and fades
+      if (p > .3 && p < .48) drawArc(lx, cx, cy, PX, 135, ang, clearElem, .95);
+      else if (p >= .48 && p < .78) drawArc(lx, cx, cy, PX, 135, -55, clearElem, .95 * (1 - (p - .48) / .3));
+      drawSword(lx, hx, hy, PX, ang, clearElem);
+      if (p > .44 && !hero.sparked) {   // shards burst off the outer rim of the crescent
+        hero.sparked = true;
+        const C = BLADES[clearElem].arc;
+        for (let i = 0; i < 26; i++) {
+          const a = (-55 + Math.random() * 150) * Math.PI / 180, ex = cx + Math.cos(a) * ARC_RX * PX, ey = cy - Math.sin(a) * ARC_RY * PX;
+          laneParts.push({ x: ex, y: ey, vx: Math.cos(a) * (60 + Math.random() * 110), vy: -Math.sin(a) * (40 + Math.random() * 80) - (clearElem === "fire" || clearElem === "holy" ? 60 : 0), c: C[i % 2], life: 420 + Math.random() * 300 });
+        }
+      }
+    }
+    if (spr) lx.drawImage(spr, hx, hy, hw, hh);
+  }
+  // bits
+  laneParts = laneParts.filter(p => (p.life -= dt) > 0);
+  laneParts.forEach(p => {
+    p.vy += 220 * s; p.x += p.vx * s; p.y += p.vy * s;
+    lx.fillStyle = p.c; lx.fillRect(Math.round(p.x / PX) * PX, Math.round(p.y / PX) * PX, PX * 2, PX * 2);
+  });
+  // monster name + boss HP
+  if (foe) {
+    lx.textBaseline = "top"; lx.font = '700 11px "Noto Sans TC", system-ui, sans-serif';
+    const label = foe.boss ? `魔王 ${foe.name}` : `Lv${level} ${foe.name}`;
+    // one line across the top on a dark chip so it reads on every backdrop: [HP pips] name
+    // sits right above the monster's head (kept inside the lane): [HP pips] name on a dark chip
+    const lw = Math.min(lx.measureText(label).width, W * .6), pw = foe.boss ? foe.max * 11 + 4 : 0, cw = lw + pw + 9;
+    const fb = foeBox || { x: W * 5 / 6, fw: 0, y: 20 };
+    const x0 = Math.max(2, Math.min(W - cw - 2, fb.x + fb.fw / 2 - cw / 2)), y0 = Math.max(1, fb.y - 18);
+    lx.fillStyle = "rgba(20,16,28,.66)"; lx.beginPath(); lx.roundRect(x0, y0, cw, 15, 4); lx.fill();
+    lx.textAlign = "right"; lx.fillStyle = foe.boss ? "#ffb08a" : "#f4efe4"; lx.fillText(label, x0 + cw - 4, y0 + 1, W * .6); lx.textAlign = "start";
+    if (foe.boss) for (let i = 0; i < foe.max; i++) { lx.fillStyle = i < foe.hp ? "#ff5048" : "#5a5060"; lx.fillRect(x0 + 5 + i * 11, y0 + 5, 8, 6); }
+  }
+  // battle callouts
+  if (laneMsg) {
+    laneMsg.t -= dt;
+    if (laneMsg.t <= 0) laneMsg = null;
+    else if (laneMsg.bubble) { if (laneMsg.delay > 0) { laneMsg.delay -= dt; laneMsg.t += dt; } else { laneMsg.age += dt; drawBurst(laneMsg, W, H); } }
+    else {
+      lx.font = '10px "Press Start 2P", "Noto Sans TC", monospace'; lx.textBaseline = "middle"; lx.textAlign = "center";
+      const tx = W / 2, ty = H * .2;   // above the fighters' heads
+      lx.fillStyle = OUTLINE; lx.fillText(laneMsg.text, tx + 1, ty + 1);
+      lx.fillStyle = (hero.t / 120 | 0) % 2 ? "#e0403c" : "#3a6ad0"; lx.fillText(laneMsg.text, tx, ty);
+      lx.textAlign = "start";
+    }
+  }
+}
+function sfxBoss(){   // low, ominous three-note sting
+  [[45, 0], [44, .18], [40, .36]].forEach(([m, s]) => { tone(N(m), s, .2, "square", .07); tone(N(m - 12), s, .2, "triangle", .14); });
+}
+
+/* ---------- pixel battle backdrops: one field scene per stage, castle hall for bosses ---------- */
+const SCENES = ["草原", "森林", "鄉鎮", "沙漠", "沼澤", "洞穴", "雨林"];
+let bgCache = { key: "", cv: null };
+function seeded(n){ return () => { n = n + 0x6D2B79F5 | 0; let t = Math.imul(n ^ n >>> 15, 1 | n); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function sceneName(){ return foe && foe.boss ? "城堡" : SCENES[(level - 1) % SCENES.length]; }
+function backdrop(){
+  const name = sceneName(), gw = Math.ceil(laneW / PX), gh = Math.ceil(laneH / PX), key = name + gw + "x" + gh;
+  if (bgCache.key !== key) {
+    const cv = document.createElement("canvas"); cv.width = gw; cv.height = gh;
+    paintScene(cv.getContext("2d"), name, gw, gh, Math.round((laneH - 6) / PX));
+    bgCache = { key, cv };
+  }
+  return bgCache.cv;
+}
+function paintScene(c, name, w, h, gy){   // drawn at 1 px = 1 game pixel, then scaled up
+  const rnd = seeded([...name].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7));
+  const R = (x, y, ww, hh, col) => { c.fillStyle = col; c.fillRect(Math.round(x), Math.round(y), ww, hh); };
+  const pick = a => a[rnd() * a.length | 0];
+  const sky = cols => { const b = Math.ceil(gy / cols.length); cols.forEach((col, i) => R(0, i * b, w, b, col)); };
+  const hills = (base, amp, freq, col, ph = 0) => { for (let x = 0; x < w; x++) { const top = Math.round(base - amp * (Math.sin(x * freq + ph) * .5 + .5)); R(x, top, 1, gy - top, col); } };
+  const ground = (col, edge, speck) => { R(0, gy, w, h - gy, col); R(0, gy, w, 1, edge); for (let i = 0; i < w / 3; i++) R(rnd() * w, gy + 1 + rnd() * (h - gy - 1), 1, 1, speck); };
+  const cloud = (x, y) => { R(x, y, 9, 2, "#ffffff"); R(x + 2, y - 1, 4, 1, "#ffffff"); R(x + 1, y + 2, 7, 1, "#e4f2fa"); };
+  const pine = (x, th, col, trunk) => { for (let k = 0; k < th; k++) { const hw = (k * .4 | 0); R(x - hw, gy - 2 - th + k, hw * 2 + 1, 1, col); } R(x, gy - 2, 1, 2, trunk); };
+  if (name === "草原") {
+    sky(["#8fd0f0", "#a6dcf4", "#bde6f6", "#d4eff8"]);
+    for (let i = 0; i < 3; i++) cloud(rnd() * w, 3 + rnd() * 6);
+    hills(gy - 5, 8, .07, "#9ad08a"); hills(gy - 1, 5, .16, "#74b860", 2);
+    ground("#5aa04a", "#7cc464", "#3e7a34");
+    for (let i = 0; i < w / 5; i++) R(rnd() * w, gy - 1 - (rnd() * 3 | 0), 1, 1, pick(["#f490b0", "#fcd83c", "#ffffff"]));
+  } else if (name === "森林") {
+    sky(["#b8dcc8", "#c8e4d0", "#d8ecd8"]);
+    for (let x = -2; x < w + 4; x += 6) pine(x + rnd() * 3, 12 + rnd() * 6, "#5a9a6a", "#4a3a2a");
+    for (let x = 1; x < w + 6; x += 10) pine(x + rnd() * 4, 17 + rnd() * 8, "#2f6a40", "#5a3a24");
+    ground("#3e6a34", "#4e8040", "#2a4a24");
+  } else if (name === "鄉鎮") {
+    sky(["#f0c890", "#f4d4a4", "#f8e0bc", "#fbecd4"]);
+    for (let x = 1; x < w; ) {
+      const hw = 8 + (rnd() * 6 | 0), hh = 6 + (rnd() * 7 | 0), rh = Math.ceil(hw / 2), roof = pick(["#c8423a", "#3a6ab0", "#8a5a2a"]);
+      R(x, gy - hh, hw, hh, pick(["#e8d8b8", "#d8c0a0", "#f0e4cc"]));
+      for (let k = 0; k < rh; k++) { const ins = rh - 1 - k; R(x - 1 + ins, gy - hh - rh + k, hw + 2 - 2 * ins, 1, roof); }
+      R(x + 2, gy - hh + 2, 2, 2, "#fcd83c"); if (hw > 10) R(x + hw - 4, gy - hh + 2, 2, 2, "#fcd83c");
+      R(x + (hw >> 1), gy - 3, 2, 3, "#7a4a24");
+      x += hw + 3 + (rnd() * 5 | 0);
+    }
+    ground("#a8a090", "#c0b8a8", "#80786a");
+  } else if (name === "沙漠") {
+    sky(["#f8c070", "#fad090", "#fbdcaa", "#fce8c4"]);
+    const sx = w * .8 | 0; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy <= 17) R(sx + dx, 8 + dy, 1, 1, "#fff4c0");
+    hills(gy - 5, 7, .05, "#eab86a"); hills(gy - 1, 4, .1, "#dca252", 1.5);
+    for (let i = 0; i < 3; i++) { const x = 6 + rnd() * (w - 12), g = "#5a9a4a";
+      R(x, gy - 9, 2, 9, g); R(x - 2, gy - 5, 2, 1, g); R(x - 2, gy - 7, 1, 2, g); R(x + 2, gy - 6, 2, 1, g); R(x + 3, gy - 8, 1, 2, g); }
+    ground("#d8a050", "#eab86a", "#b88038");
+  } else if (name === "沼澤") {
+    sky(["#8a9a80", "#9aa88e", "#aab69c"]);
+    hills(gy - 6, 3, .1, "#7a8a70");
+    for (let i = 0; i < 3; i++) { const x = 6 + rnd() * (w - 12), t = "#4a3a2a";
+      R(x, gy - 15, 2, 15, t); R(x - 3, gy - 11, 3, 1, t); R(x - 3, gy - 12, 1, 1, t); R(x + 2, gy - 9, 3, 1, t); R(x + 4, gy - 10, 1, 1, t); }
+    for (let i = 0; i < w / 3; i++) { const hh = 2 + (rnd() * 3 | 0); R(rnd() * w, gy - hh, 1, hh, "#5a7a3a"); }
+    ground("#4a6a50", "#6a8a6a", "#7a9a7a");
+  } else if (name === "洞穴") {
+    R(0, 0, w, h, "#3a3038");
+    for (let i = 0; i < w; i++) R(rnd() * w, rnd() * gy, 2, 1, "#4a3e46");
+    for (let x = 0; x < w; x += 4 + (rnd() * 4 | 0)) { const len = 2 + (rnd() * 7 | 0); for (let k = 0; k < len; k++) R(x + (k * 2 > len ? 1 : 0), k, k * 2 > len ? 1 : 3, 1, "#5a4a52"); }
+    for (let i = 0; i < 4; i++) { const x = rnd() * w; R(x, gy - 3, 1, 3, "#7ae0ff"); R(x + 1, gy - 2, 1, 2, "#b0f4ff"); R(x - 1, gy - 1, 1, 1, "#5ac0e0"); }
+    ground("#4a3e46", "#5e5058", "#2a2228");
+  } else if (name === "雨林") {
+    sky(["#9ad8a0", "#a8e0b0", "#b8e8c0"]);
+    hills(gy - 8, 6, .12, "#5aa060");
+    for (let i = 0; i < 2; i++) R(10 + rnd() * (w - 20), 0, 3, gy, "#6a4a2a");
+    for (let x = 0; x < w; x++) R(x, 0, 1, 2 + (rnd() * 3 | 0), "#2f7a3a");
+    for (let x = 1; x < w; x += 3 + (rnd() * 3 | 0)) { const len = 3 + (rnd() * 12 | 0); R(x, 0, 1, len, "#3a8a3a"); R(x - 1, len, 2, 1, "#4aa04a"); }
+    for (let x = 2; x < w; x += 5) { R(x, gy - 2, 1, 2, "#2f7a3a"); R(x - 1, gy - 1, 3, 1, "#3a8a3a"); }
+    ground("#3a6a2a", "#4a8a3a", "#2a4a1a");
+  } else {   // 城堡: stone hall, arched windows, banners, torches, red carpet
+    R(0, 0, w, gy, "#4e4e5e");
+    for (let y = 0; y < gy; y += 3) for (let x = ((y / 3) % 2) * 3 - 3; x < w; x += 6) R(x, y, 5, 2, "#5e5e70");
+    [.3, .7].forEach(f => { const x = w * f | 0; R(x, 5, 4, 9, "#1a1828"); R(x + 1, 4, 2, 1, "#1a1828"); R(x + 1, 7, 1, 6, "#2a2a4a"); });
+    [.12, .5, .88].forEach(f => { const x = (w * f | 0) - 2; R(x, 2, 4, 11, "#8a1e28"); R(x + 1, 5, 2, 2, "#fcd83c"); R(x, 13, 1, 1, "#8a1e28"); R(x + 3, 13, 1, 1, "#8a1e28"); });
+    [.2, .4, .6, .8].forEach(f => { const x = w * f | 0; R(x, 13, 1, 3, "#7a4a24"); R(x - 1, 10, 3, 3, "#f08a30"); R(x, 9, 1, 2, "#fcd83c"); });
+    R(0, gy, w, h - gy, "#8a1e28"); R(0, gy, w, 1, "#c08a1a");
+  }
+}
+
+/* ---------- pause screen: night sky, moon, the hero resting by a campfire with fish and meat roasting on skewers ---------- */
+let pauseT = 0, pauseSmall = null;
+function drawPause(dt){
+  pauseT += dt;
+  const cv = $("pausebg"), W = COLS * cell, H = ROWS * cell, p = Math.max(2, Math.round(cell / 7));
+  const gw = Math.ceil(W / p), gh = Math.ceil(H / p);
+  if (!pauseSmall || pauseSmall.width !== gw || pauseSmall.height !== gh) { pauseSmall = document.createElement("canvas"); pauseSmall.width = gw; pauseSmall.height = gh; }
+  const c = pauseSmall.getContext("2d"), rnd = seeded(77), T = pauseT / 1000;
+  const R = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(Math.round(x), Math.round(y), w, h); };
+  const gy = Math.round(gh * .74), fx = Math.round(gw * .56), fy = gy + 9;
+  // sky bands, deep navy to indigo at the horizon
+  const sky = ["#070b22", "#0a0f2a", "#0e1534", "#121a3e", "#172048", "#1c2652"], band = Math.ceil(gy / sky.length);
+  sky.forEach((col, i) => R(0, i * band, gw, band, col));
+  // twinkling stars
+  for (let i = 0; i < gw * gh / 90; i++) {
+    const x = rnd() * gw, y = rnd() * (gy - 10), ph = rnd() * 6.28, b = Math.sin(T * (1.5 + rnd() * 2) + ph);
+    if (b > -.3) R(x, y, 1, 1, b > .6 ? "#ffffff" : "#8a94c8");
+    if (b > .92) { R(x - 1, y, 1, 1, "#5a64a0"); R(x + 1, y, 1, 1, "#5a64a0"); R(x, y - 1, 1, 1, "#5a64a0"); R(x, y + 1, 1, 1, "#5a64a0"); }
+  }
+  // moon with a soft halo and craters
+  const mx = Math.round(gw * .8), my = Math.round(gh * .09), mr = Math.max(5, Math.round(gw / 11));
+  for (let dy = -mr - 3; dy <= mr + 3; dy++) for (let dx = -mr - 3; dx <= mr + 3; dx++) {
+    const d = dx * dx + dy * dy;
+    if (d <= mr * mr) R(mx + dx, my + dy, 1, 1, dx + dy > mr * .6 ? "#e8dcae" : "#fff6d6");
+    else if (d <= (mr + 3) * (mr + 3) && (dx + dy) % 2 === 0) R(mx + dx, my + dy, 1, 1, "#26305e");
+  }
+  R(mx - 2, my - 1, 2, 2, "#e0d4a4"); R(mx + 2, my + 2, 2, 1, "#e0d4a4"); R(mx - 1, my + 3, 1, 1, "#e0d4a4");
+  // distant hills and pine silhouettes
+  for (let x = 0; x < gw; x++) { const top = Math.round(gy - 6 - 5 * (Math.sin(x * .09) * .5 + .5)); R(x, top, 1, gy - top, "#121838"); }
+  for (let i = 0; i < 6; i++) { const x = rnd() * gw, th = 6 + rnd() * 6; for (let k = 0; k < th; k++) { const hw = k * .35 | 0; R(x - hw, gy - 3 - th + k, hw * 2 + 1, 1, "#0b1030"); } }
+  // ground, lit warm around the fire
+  R(0, gy, gw, gh - gy, "#1a2418");
+  for (let i = 0; i < gw / 2; i++) R(rnd() * gw, gy + 1 + rnd() * (gh - gy), 1, 1, "#26341f");
+  const flick = 1 + Math.sin(T * 9) * .05 + Math.sin(T * 23) * .04, glowR = gw * .42 * flick;
+  const g = c.createRadialGradient(fx, fy - 2, 1, fx, fy - 2, glowR);
+  g.addColorStop(0, "rgba(255,170,80,.55)"); g.addColorStop(.5, "rgba(240,110,40,.18)"); g.addColorStop(1, "rgba(240,110,40,0)");
+  c.fillStyle = g; c.fillRect(0, 0, gw, gh);
+  // hero resting to the left of the fire
+  if (HERO.idle) { const hw = HERO.idle.width, hh = HERO.idle.height; c.imageSmoothingEnabled = false; c.drawImage(HERO.idle, fx - hw - 7, fy + 3 - hh); }
+  // skewers stuck in the ground, leaning over the fire: fish and meat
+  const skewer = (bx, lean, kind) => {
+    const len = 14, pts = [];
+    for (let k = 0; k <= len; k++) pts.push([bx + lean * k / len, fy + 4 - k]);   // lean = how far the tip lies toward the fire
+    pts.forEach(([x, y]) => R(x, y, 1, 1, "#8a6a40"));
+    const [tx, ty] = pts[len - 3];
+    if (kind === "fish") {   // grilled fish: silver-brown body, char marks, tail and eye
+      R(tx - 1, ty - 3, 3, 7, "#9aa4a8"); R(tx - 2, ty - 2, 5, 5, "#a8a090"); R(tx - 1, ty - 1, 1, 1, "#6a3a1a"); R(tx + 1, ty + 1, 1, 1, "#6a3a1a");
+      R(tx - 2, ty + 4, 5, 1, "#7a8890"); R(tx - 1, ty + 5, 3, 1, "#7a8890"); R(tx, ty - 2, 1, 1, "#1a1420");
+    } else {                 // meat chunks with a strip of fat
+      [[0, "#8a3a20"], [3, "#b8542e"], [6, "#8a3a20"]].forEach(([o, col]) => { R(tx - 1, ty - 4 + o, 3, 2, col); R(tx - 1, ty - 4 + o + 2, 3, 1, "#f0d8c0"); });
+    }
+  };
+  skewer(fx + 9, -2, "fish"); skewer(fx + 15, -3, "meat"); skewer(fx + 21, -4, "fish"); skewer(fx + 27, -5, "meat");
+  // stone ring, crossed logs, and the flickering flame
+  [[-5, 0], [-4, 2], [-1, 3], [2, 3], [5, 2], [6, 0]].forEach(([dx, dy]) => R(fx + dx - 1, fy + dy, 2, 1, "#6a6a72"));
+  for (let k = -4; k <= 4; k++) { R(fx + k, fy - Math.abs(k) * .3 + 1, 1, 1, "#5a3a1e"); R(fx + k, fy + Math.abs(k) * .3 - 1, 1, 1, "#7a4a24"); }
+  for (let i = -3; i <= 3; i++) {
+    const h = Math.max(1, Math.round((5 - Math.abs(i)) * 2.2 * (0.75 + Math.random() * .45)));
+    R(fx + i, fy - h, 1, h, "#e0403c");
+    R(fx + i, fy - h * .7, 1, Math.ceil(h * .7), "#f08a30");
+    if (Math.abs(i) < 2) R(fx + i, fy - h * .4, 1, Math.ceil(h * .4), "#fcd83c");
+  }
+  for (let i = 0; i < 4; i++) {   // sparks drifting up
+    const life = (T * .8 + i * .25) % 1, sx = fx + Math.sin(T * 3 + i * 2) * 3 + (i - 1.5) * 1.5, sy = fy - 9 - life * 18;
+    if (life < .85) R(sx, sy, 1, 1, life < .4 ? "#fcd83c" : "#f08a30");
+  }
+  const x = cv.getContext("2d"); x.imageSmoothingEnabled = false;
+  x.clearRect(0, 0, W, H); x.drawImage(pauseSmall, 0, 0, gw * p, gh * p);
+}
+
+/* ---------- elemental line-clear effects: one random element per clear ---------- */
+const CLEAR_MS = 380;
+const ELEMS = {
+  fire:    { name: "火焰斬", ink: ["#e8141c", "#4a0606"], lane: "#e0503c", cols: ["#fcd83c", "#f08a30", "#e0403c"] },
+  ice:     { name: "冰凍斬", ink: ["#1a86e8", "#061c48"], lane: "#3aa0e0", cols: ["#ffffff", "#bfe9ff", "#7ac8f0"] },
+  thunder: { name: "雷電斬", ink: ["#ffd400", "#14245e"], lane: "#e0b000", cols: ["#ffffff", "#fff27a", "#ffd400"] },
+  holy:    { name: "聖光斬", ink: ["#ffffff", "#5a6c9c"], lane: "#9ab0d8", cols: ["#ffffff", "#f4f8ff", "#c8d8f0"] },
+  dark:    { name: "暗黑斬", ink: ["#a040f0", "#1a0630"], lane: "#7a3ab0", cols: ["#e0a0ff", "#9a3ae0", "#3a1060"] },
+  slash:   { name: "疾風斬", ink: ["#2a8a5a", "#06281a"], lane: "#5a6a7a", cols: ["#ffffff", "#d8e4ec", "#9aa8b8"] },
+};
+let clearElem = "slash";
+function pickElem(){ const k = Object.keys(ELEMS).filter(e => e !== clearElem); clearElem = k[Math.random() * k.length | 0]; }
+function elemBurst(rows){
+  const E = ELEMS[clearElem], sz = Math.max(3, cell / 5 | 0);
+  rows.forEach(r => { for (let c = 0; c < COLS; c++) for (let i = 0; i < 2; i++) {
+    let vx, vy, g;
+    if (clearElem === "fire")         { vx = (Math.random() - .5) * cell;     vy = -cell * (3 + Math.random() * 4);     g = -cell * 2; }
+    else if (clearElem === "ice")     { vx = (Math.random() - .5) * cell * 5; vy = -cell * (1 + Math.random() * 3);     g = cell * 14; }
+    else if (clearElem === "thunder") { vx = (Math.random() - .5) * cell * 12; vy = (Math.random() - .5) * cell * 8;   g = 0; }
+    else if (clearElem === "holy")    { vx = (Math.random() - .5) * cell * .6; vy = -cell * (1.5 + Math.random() * 2.5); g = 0; }
+    else if (clearElem === "dark")    { vx = (COLS / 2 - c - .5) * cell * 1.6; vy = (Math.random() - .5) * cell * 2; g = 0; }
+    else                              { vx = cell * (4 + Math.random() * 8);  vy = (Math.random() - .5) * cell * 3;     g = cell * 4; }
+    parts.push({ x: (c + Math.random()) * cell, y: (r + Math.random()) * cell, vx, vy, g, life: 380 + Math.random() * 320, c: E.cols[Math.random() * 3 | 0], sz });
+  }});
+  if (!calm() && (clearElem === "thunder" || clearElem === "slash" || clearElem === "dark")) shakeT = 160;
+  sfxElem(clearElem);
+}
+function drawClearFx(ctx, w){
+  const t = Math.min(1, clearT / CLEAR_MS), px = Math.max(2, cell / 7 | 0), snap = v => Math.round(v / px) * px;
+  clearing.forEach(r => {
+    const y0 = r * cell;
+    if (clearElem === "fire") {          // flame tongues licking up out of the row
+      ctx.globalAlpha = 1 - t * .6;
+      ctx.fillStyle = "#e0403c"; ctx.fillRect(0, y0, w, cell);
+      for (let x = 0; x < w; x += px) {
+        const h = cell * (.3 + Math.random() * (1.4 - t));
+        ctx.fillStyle = "#f08a30"; ctx.fillRect(x, snap(y0 + cell - h), px, snap(h));
+        ctx.fillStyle = "#fcd83c"; ctx.fillRect(x, snap(y0 + cell - h * .5), px, snap(h * .5));
+      }
+    } else if (clearElem === "ice") {    // row freezes, frost stars grow, then it cracks
+      ctx.fillStyle = `rgba(191,233,255,${.92 - t * .45})`; ctx.fillRect(0, y0, w, cell);
+      const s = cell * .35 * Math.min(1, t * 3);
+      ctx.fillStyle = "#ffffff";
+      for (let c = 0; c < COLS; c++) {
+        const cx = c * cell + cell / 2, cy = y0 + cell / 2;
+        ctx.fillRect(snap(cx - s), snap(cy), snap(2 * s), px); ctx.fillRect(snap(cx), snap(cy - s), px, snap(2 * s));
+      }
+      if (t > .55) { ctx.fillStyle = "#3a8ac0"; for (let c = 0; c < COLS; c++) ctx.fillRect(c * cell + (c * 7 % 5) * px, y0, px, cell); }
+    } else if (clearElem === "thunder") { // white flash, then a jagged bolt flickering along the row
+      ctx.fillStyle = t < .12 ? "rgba(255,255,255,.95)" : "rgba(26,20,32,.35)"; ctx.fillRect(0, y0, w, cell);
+      if (t >= .12) for (let x = 0; x < w; x += px * 2) {
+        const ny = snap(y0 + cell * (.2 + Math.random() * .6));
+        ctx.fillStyle = "#fcd83c"; ctx.fillRect(x, ny - px, px * 2, px * 3);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(x, ny, px * 2, px);
+      }
+    } else if (clearElem === "holy") {   // pure white light with pale pillars rising to the top
+      ctx.fillStyle = `rgba(244,248,255,${1 - t * .55})`; ctx.fillRect(0, y0, w, cell);
+      ctx.globalAlpha = (1 - t) * .26; ctx.fillStyle = "#ffffff";
+      for (let c = 0; c < COLS; c++) ctx.fillRect(snap(c * cell + cell * .35), 0, snap(cell * .3), y0);
+      ctx.globalAlpha = 1 - t; ctx.fillStyle = "#ffffff";
+      for (let c = 0; c < COLS; c += 2) ctx.fillRect(snap(c * cell + cell * .4), snap(y0 - t * cell * 3 + (c % 3) * cell * .4), px, px * 3);
+    } else if (clearElem === "dark") {   // the row is swallowed by a purple void: tendrils writhe, then it collapses inward
+      const k = t < .6 ? 1 : 1 - (t - .6) / .4, half = w / 2;
+      ctx.fillStyle = `rgba(26,6,48,${.95 * k})`; ctx.fillRect(snap(half - half * k), y0, snap(w * k), cell);
+      for (let x = snap(half - half * k); x < half + half * k; x += px) {
+        const h = cell * (.2 + Math.random() * .9) * k;
+        ctx.fillStyle = "#7a2ab0"; ctx.fillRect(x, snap(y0 + cell / 2 - h), px, snap(h * 2));
+        if (Math.random() < .25) { ctx.fillStyle = "#e0a0ff"; ctx.fillRect(x, snap(y0 + Math.random() * cell), px, px); }
+      }
+      ctx.fillStyle = "#e0a0ff"; ctx.fillRect(snap(half - px), y0, px * 2, cell);   // glowing seam at the centre
+    } else {                             // a bright sword cut sweeps across, then the row flashes
+      const k = Math.min(1, t / .35);
+      if (t > .35) { ctx.fillStyle = `rgba(255,255,255,${(1 - t) * 1.2})`; ctx.fillRect(0, y0, w, cell); }
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(0, snap(y0 + cell * .45), snap(w * k), px * 2);
+      if (k < 1) ctx.fillRect(snap(w * k) - px * 3, snap(y0 + cell * .25), px * 3, snap(cell * .5));
+    }
+    ctx.globalAlpha = 1;
+  });
+}
+function sfxElem(e){
+  const a = actx; if (!a || !soundOn) return;
+  const t = a.currentTime;
+  const hiss = (vol, dur, f) => {
+    const n = a.createBufferSource(), g = a.createGain(), bq = a.createBiquadFilter();
+    n.buffer = getNoise(a); bq.type = "bandpass"; bq.frequency.value = f;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    n.connect(bq).connect(g).connect(a.destination); n.start(t); n.stop(t + dur + .02);
+  };
+  if (e === "fire") hiss(.3, .35, 900);
+  else if (e === "thunder") { hiss(.4, .25, 2500); hiss(.25, .4, 300); }
+  else if (e === "slash") hiss(.25, .12, 4000);
+  else if (e === "dark") { hiss(.3, .45, 220); tone(N(50), 0, .25, "square", .07); tone(N(44), .14, .35, "square", .07); }
+  else if (e === "ice") [96, 100, 103].forEach((m, i) => tone(N(m), .02 + i * .04, .06, "triangle", .08));
+  else [79, 84, 88].forEach(m => tone(N(m), .02, .35, "triangle", .07));
+}
+
+/* ---------- landing & rotation effects ---------- */
+let parts = [], flashes = [], shakeT = 0, hardFlag = false;
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function fxLand(p, hard){
+  const cells = []; eachCell(p.m, (r, c) => cells.push([p.x + c, p.y + r]));
+  flashes.push({ cells, t: hard ? 180 : 120, max: hard ? 180 : 120, col: "#ffffff" });   // white glint on the landed tiles
+  cells.forEach(([x, y]) => {   // pixel dust puffs from the bottom edges
+    if (cells.some(([a, b]) => a === x && b === y + 1)) return;
+    for (let i = 0; i < (hard ? 6 : 3); i++) parts.push({
+      x: (x + Math.random()) * cell, y: (y + 1) * cell - 2,
+      vx: (Math.random() * 2 - 1) * cell * (hard ? 3 : 1.6), vy: -Math.random() * cell * (hard ? 3 : 1.5),
+      g: cell * 6, life: 320 + Math.random() * 200, c: Math.random() < .5 ? "#eef6f2" : "#a9cbc4", sz: Math.max(3, cell / 4.5 | 0)
+    });
+  });
+  if (hard && !calm()) shakeT = 140;   // small board shake on a hard drop
+  sfxLand(hard);
+}
+function fxTrail(p, y0, n){   // speed streaks behind a hard drop
+  if (n < 1) return;
+  const top = {}; eachCell(p.m, (r, c) => { const x = p.x + c; top[x] = Math.min(top[x] ?? 99, r); });
+  for (const x in top) flashes.push({ trail: true, x: +x, y0: Math.max(0, y0 + top[x]), y1: p.y + top[x], t: 170, max: 170, col: GLAZE[p.type][0] });
+}
+function fxRotate(){
+  const cells = []; eachCell(cur.m, (r, c) => cells.push([cur.x + c, cur.y + r]));
+  flashes.push({ cells, t: 110, max: 110, col: GLAZE[cur.type][0], outline: true });
+  const cx = (cur.x + cur.m[0].length / 2) * cell, cy = (cur.y + cur.m.length / 2) * cell;
+  for (let i = 0; i < 6; i++) {   // little star sparkle spinning out
+    const a = i / 6 * Math.PI * 2 + Math.random() * .5;
+    parts.push({ x: cx, y: cy, vx: Math.cos(a) * cell * 4, vy: Math.sin(a) * cell * 4, g: 0, life: 200, c: i % 2 ? "#fcd83c" : "#ffffff", sz: Math.max(2, cell / 7 | 0) });
+  }
+  sfxRotate();
+}
+
+/* ---------- 8-bit fireworks on level up ---------- */
+let rockets = [], sparks = [], banner = null;
+function fireworks(lv){
+  const W = COLS * cell, H = ROWS * cell;
+  for (let i = 0; i < 5; i++) rockets.push({ x: W * (.15 + Math.random() * .7), y: H, vy: -(H * 1.3 + Math.random() * H * .3), delay: i * 280, c: FW[i % FW.length], fuse: 600 + Math.random() * 250 });
+  banner = { text: `LEVEL ${lv}!`, t: 2600 };
+}
+function drawFx(dt){
+  const W = COLS * cell, H = ROWS * cell, g = 4, s = dt / 1000;
+  fxx.clearRect(0, 0, W, H);
+  if (!rockets.length && !sparks.length && !banner && !parts.length && !flashes.length && shakeT <= 0) return;
+  // landing / rotation effects
+  if (shakeT > 0) {
+    shakeT -= dt;
+    const k = shakeT > 0 ? Math.round(Math.random() * 4 - 2) : 0;
+    bc.parentElement.style.transform = k ? `translate(${k}px, ${Math.abs(k)}px)` : "";
+  }
+  flashes = flashes.filter(f => (f.t -= dt) > 0);
+  flashes.forEach(f => {
+    const a = f.t / f.max;
+    fxx.globalAlpha = a * (f.trail ? .35 : .65);
+    fxx.fillStyle = f.col; fxx.strokeStyle = f.col; fxx.lineWidth = 2;
+    if (f.trail) fxx.fillRect(f.x * cell + cell * .2, f.y0 * cell, cell * .6, (f.y1 - f.y0) * cell);
+    else f.cells.forEach(([x, y]) => {
+      if (y < 0) return;
+      if (f.outline) fxx.strokeRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
+      else fxx.fillRect(x * cell + 2, y * cell + 2, cell - 4, cell - 4);
+    });
+  });
+  fxx.globalAlpha = 1;
+  parts = parts.filter(p => (p.life -= dt) > 0);
+  parts.forEach(p => {
+    p.vx *= .9; p.vy += p.g * s; p.x += p.vx * s; p.y += p.vy * s;
+    fxx.fillStyle = p.c; fxx.fillRect(Math.round(p.x / p.sz) * p.sz, Math.round(p.y / p.sz) * p.sz, p.sz, p.sz);
+  });
+  const dot = (x, y, c) => { fxx.fillStyle = c; fxx.fillRect(Math.round(x / g) * g, Math.round(y / g) * g, g, g); };
+  rockets = rockets.filter(r => {
+    if (r.delay > 0) { r.delay -= dt; return true; }
+    r.fuse -= dt; r.y += r.vy * s; r.vy += H * 1.2 * s;
+    dot(r.x, r.y, "#ffffff"); dot(r.x, r.y + g * 1.5, r.c);
+    if (r.fuse <= 0) {
+      sfxBoom();
+      for (let i = 0; i < 28; i++) {
+        const a = i / 28 * Math.PI * 2, sp = H * (.18 + Math.random() * .12);
+        sparks.push({ x: r.x, y: r.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, c: Math.random() < .25 ? "#ffffff" : r.c, life: 900 + Math.random() * 400 });
+      }
+      return false;
+    }
+    return true;
+  });
+  sparks = sparks.filter(p => (p.life -= dt) > 0);
+  sparks.forEach(p => {
+    p.vx *= .98; p.vy = p.vy * .98 + H * .25 * s; p.x += p.vx * s; p.y += p.vy * s;
+    if (p.life > 400 || (p.life / 90 | 0) % 2) dot(p.x, p.y, p.c);   // twinkle out
+  });
+  if (banner) {
+    banner.t -= dt;
+    if (banner.t <= 0) { banner = null; return; }
+    const fs = Math.max(12, Math.round(cell * .7));
+    fxx.font = `${fs}px "Press Start 2P", monospace`; fxx.textAlign = "center"; fxx.textBaseline = "middle";
+    fxx.fillStyle = C.line; fxx.fillText(banner.text, W / 2 + 3, H * .45 + 3);
+    fxx.fillStyle = (banner.t / 150 | 0) % 2 ? "#fcd83c" : "#ffffff"; fxx.fillText(banner.text, W / 2, H * .45);
+    fxx.textAlign = "start";
+  }
+}
+
+
+/* ---------- 8-bit sound: square/triangle waves + crunchy noise, made live with Web Audio ---------- */
+let actx = null, noiseBuf = null, soundOn = true;
+try { soundOn = localStorage.getItem("tilekiln-sound") !== "off"; } catch(e) {}
+function audio(){
+  if (!actx) {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
+    actx = new AC();
+    const b = actx.createBufferSource(); b.buffer = actx.createBuffer(1, 1, 22050); b.connect(actx.destination); b.start(0); // unlock iOS
+    mGain = actx.createGain(); mGain.gain.value = MVOL; mGain.connect(actx.destination);
+  }
+  if (actx.state === "suspended") actx.resume();
+  return actx;
+}
+["pointerdown", "touchend", "click", "keydown"].forEach(ev => addEventListener(ev, audio, { passive: true }));
+const N = m => 440 * Math.pow(2, (m - 69) / 12);   // MIDI note -> Hz
+function tone(freq, start, dur, type = "square", vol = .1){
+  const a = actx; if (!a || !soundOn) return;
+  const o = a.createOscillator(), g = a.createGain(), t = a.currentTime + start;
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(vol, t); g.gain.setValueAtTime(vol, t + dur * .75); g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + .02);
+}
+function sfxClear(n){
+  // rising C-major arpeggio; more rows = longer run, 4 rows ends with a sparkle
+  const notes = [72, 76, 79, 84, 88, 91];
+  const steps = 2 + n;
+  for (let i = 0; i < steps; i++) tone(N(notes[i]), i * .055, .075, "square", .09);
+  if (n >= 4) { tone(N(96), steps * .055, .3, "square", .08); tone(N(84), steps * .055, .3, "triangle", .14); }
+}
+function sfxLevel(at = 0){
+  if (mGain && actx) {   // duck the music so the fanfare stands out
+    const t = actx.currentTime;
+    mGain.gain.setTargetAtTime(0, t + at, .04); mGain.gain.setTargetAtTime(MVOL, t + at + 1.3, .25);
+  }
+  // short fanfare: square lead over a triangle bass
+  [[67, 0, .1], [72, .1, .1], [76, .2, .1], [79, .3, .1], [76, .42, .08], [79, .5, .08], [84, .6, .45]]
+    .forEach(([m, s, d]) => { tone(N(m), at + s, d, "square", .09); tone(N(m - 12), at + s, d, "triangle", .13); });
+}
+function getNoise(a){
+  if (!noiseBuf) {   // sample-and-hold white noise = crunchy NES-style noise channel
+    noiseBuf = a.createBuffer(1, Math.floor(a.sampleRate * .4), a.sampleRate);
+    const d = noiseBuf.getChannelData(0); let v = 0;
+    for (let i = 0; i < d.length; i++) { if (i % 10 === 0) v = Math.random() * 2 - 1; d[i] = v; }
+  }
+  return noiseBuf;
+}
+function sfxRotate(){   // quick rising blip
+  const a = actx; if (!a || !soundOn) return;
+  const o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
+  o.type = "square"; o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(1480, t + .04);
+  g.gain.setValueAtTime(.035, t); g.gain.linearRampToValueAtTime(0, t + .05);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + .06);
+}
+function sfxLand(hard){   // soft triangle thump; hard drop adds a noise crunch
+  const a = actx; if (!a || !soundOn) return;
+  const o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
+  o.type = "triangle"; o.frequency.setValueAtTime(hard ? 180 : 140, t); o.frequency.exponentialRampToValueAtTime(45, t + (hard ? .14 : .08));
+  g.gain.setValueAtTime(hard ? .35 : .2, t); g.gain.linearRampToValueAtTime(0, t + (hard ? .16 : .1));
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + .2);
+  if (hard) {
+    const n = a.createBufferSource(), ng = a.createGain();
+    n.buffer = getNoise(a); ng.gain.setValueAtTime(.08, t); ng.gain.exponentialRampToValueAtTime(.001, t + .08);
+    n.connect(ng).connect(a.destination); n.start(t); n.stop(t + .1);
+  }
+}
+function sfxBoom(){
+  const a = actx; if (!a || !soundOn) return;
+  const src = a.createBufferSource(), g = a.createGain(), t = a.currentTime;
+  src.buffer = getNoise(a); g.gain.setValueAtTime(.16, t); g.gain.exponentialRampToValueAtTime(.001, t + .35);
+  src.connect(g).connect(a.destination); src.start(t); src.stop(t + .4);
+}
+function updateSoundBtn(){ $("sound-btn").textContent = soundOn ? "音效：開" : "音效：關"; }
+$("sound-btn").addEventListener("click", () => {
+  soundOn = !soundOn; updateSoundBtn();
+  try { localStorage.setItem("tilekiln-sound", soundOn ? "on" : "off"); } catch(e) {}
+  if (soundOn) { audio(); tone(N(84), 0, .08); }
+});
+updateSoundBtn();
+
+/* ---------- 8-bit background music: original, elegant & relaxed waltz (3/4, 16-bar loop) ---------- */
+const MVOL = .09;
+let mGain = null, mBus = null, pulseWave = null, musicOn = true, mStep = 0, mNext = 0, mTimer = null;
+try { musicOn = localStorage.getItem("tilekiln-music") !== "off"; } catch(e) {}
+// one chord per bar: [bass root, then three voicing tones] (MIDI)
+// Cmaj7 Am7 Dm7 G7 | Cmaj7 Em7 Fmaj7 G | Am7 Em7 Fmaj7 Cmaj7/E | Dm7 G7 Cmaj7 Cmaj7
+const CHORDS = [
+  [48,55,59,64], [45,52,55,60], [50,57,60,65], [43,50,53,59],
+  [48,55,59,64], [52,59,62,67], [41,48,52,57], [43,50,55,59],
+  [45,52,55,60], [52,59,62,67], [41,48,52,57], [40,48,55,59],
+  [50,57,60,65], [43,50,53,59], [48,55,59,64], [48,55,59,64]
+];
+// lyrical melody, per bar as [note, length in 8ths] (0 = rest); every bar = 6 eighths
+const MEL_BARS = [
+  [[76,3],[74,1],[76,2]], [[72,4],[69,2]], [[77,3],[76,1],[74,2]], [[71,4],[74,2]],
+  [[79,3],[77,1],[76,2]], [[74,2],[76,2],[79,2]], [[81,4],[79,1],[77,1]], [[74,6]],
+  [[72,3],[74,1],[76,2]], [[79,4],[76,2]], [[77,2],[76,2],[72,2]], [[76,4],[79,2]],
+  [[81,3],[79,1],[77,2]], [[74,2],[71,2],[74,2]], [[72,6]], [[0,6]]
+];
+const MEL = []; MEL_BARS.forEach(bar => bar.forEach(([m, l]) => { MEL.push([m, l]); for (let i = 1; i < l; i++) MEL.push(null); }));
+const ARP = [0, 1, 2, 3, 2, 1];   // gentle up-and-down arpeggio across each bar
+function pulse(){   // soft 25% pulse wave, the classic handheld lead tone
+  if (!pulseWave) {
+    const n = 32, re = new Float32Array(n), im = new Float32Array(n);
+    for (let k = 1; k < n; k++) re[k] = 2 * Math.sin(Math.PI * k * .25) / (Math.PI * k);
+    pulseWave = actx.createPeriodicWave(re, im);
+  }
+  return pulseWave;
+}
+function musicBus(){   // the melody goes through a soft echo for a roomy, airy feel
+  if (!mBus) {
+    mBus = actx.createGain();
+    const d = actx.createDelay(1), fb = actx.createGain(), wet = actx.createGain();
+    d.delayTime.value = .33; fb.gain.value = .28; wet.gain.value = .3;
+    mBus.connect(mGain); mBus.connect(d); d.connect(fb).connect(d); d.connect(wet).connect(mGain);
+  }
+  return mBus;
+}
+function mnote(freq, t, dur, vol, lead){
+  const o = actx.createOscillator(), g = actx.createGain();
+  if (lead) o.setPeriodicWave(pulse()); else o.type = "triangle";
+  o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .015);
+  g.gain.setTargetAtTime(vol * .55, t + .05, .15);   // gentle decay to a soft sustain
+  g.gain.setTargetAtTime(0, t + dur, .06);
+  o.connect(g).connect(lead ? musicBus() : mGain); o.start(t); o.stop(t + dur + .4);
+}
+function musicTick(){
+  const bpm = Math.min(108, 92 + (level - 1) * 2), step = 60 / bpm / 2;   // relaxed waltz, only barely quickens with level
+  while (mNext < actx.currentTime + .15) {
+    const i = mStep % 96, bar = (i / 6) | 0, j = i % 6, ch = CHORDS[bar], m = MEL[i];
+    const tones = [ch[0] + 12, ch[1], ch[2], ch[3]];
+    if (m && m[0]) mnote(N(m[0]), mNext, step * m[1] * .95, .45, true);   // melody
+    mnote(N(tones[ARP[j]]), mNext, step * 1.6, .3, false);               // arpeggio
+    if (j === 0) mnote(N(ch[0]), mNext, step * 5.5, .6, false);           // long bass note per bar
+    mNext += step; mStep++;
+  }
+}
+function musicSync(){
+  const should = musicOn && state === "play" && actx && actx.state === "running" && !document.hidden;
+  if (should && !mTimer) { mNext = actx.currentTime + .05; mTimer = setInterval(musicTick, 25); }
+  else if (!should && mTimer) { clearInterval(mTimer); mTimer = null; }
+}
+function updateMusicBtn(){ $("music-btn").textContent = musicOn ? "音樂：開" : "音樂：關"; }
+$("music-btn").addEventListener("click", () => {
+  musicOn = !musicOn; updateMusicBtn(); audio();
+  try { localStorage.setItem("tilekiln-music", musicOn ? "on" : "off"); } catch(e) {}
+});
+updateMusicBtn();
+
+/* ---------- loop ---------- */
+function frame(t){
+  const dt = Math.min(100, t - (last || t)); last = t;
+  if (state === "play") {
+    if (clearing) {
+      clearT += dt;
+      if (clearT > CLEAR_MS) {
+        grid = grid.filter((_, i) => !clearing.includes(i));
+        while (grid.length < ROWS) grid.unshift(Array(COLS).fill(null));
+        clearing = null; advance();
+      }
+    } else if (cur) {
+      const interval = Math.max(60, 800 * Math.pow(.85, level - 1));
+      if (grounded()) { lockT += dt; if (lockT >= 500) lock(); }
+      else { dropAcc += dt; if (dropAcc >= interval) { cur.y++; dropAcc = 0; } }
+      tickRepeat(dt);
+    }
+  }
+  if (grid) drawBoard();
+  updateLane(dt); drawFx(dt); musicSync();
+  if (state === "pause") drawPause(dt);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- input (with DAS) ---------- */
+const held = {}; // action -> {t, fired}
+const DAS = 150, ARR = 45, SOFT = 35;
+function act(a){
+  if (state !== "play" || !cur || clearing) return;
+  if (a === "left") move(-1); else if (a === "right") move(1);
+  else if (a === "soft") soft(); else if (a === "rot") rotate(1); else if (a === "ccw") rotate(-1);
+  else if (a === "drop") hardDrop(); else if (a === "hold") hold();
+}
+function press(a){
+  if (held[a]) return;
+  act(a);
+  if (a === "left" || a === "right" || a === "soft") held[a] = { t: 0 };
+  if (a === "left") delete held.right; if (a === "right") delete held.left;
+}
+function release(a){ delete held[a]; }
+function tickRepeat(dt){
+  for (const a in held) {
+    const h = held[a]; h.t += dt;
+    const delay = a === "soft" ? SOFT : DAS;
+    while (h.t >= delay) { act(a); h.t -= a === "soft" ? SOFT : ARR; if (a !== "soft" && h.t < DAS - ARR) h.t = DAS - ARR; }
+  }
+}
+const KEYMAP = { ArrowLeft:"left", ArrowRight:"right", ArrowDown:"soft", ArrowUp:"drop", KeyX:"rot", KeyZ:"ccw", KeyC:"hold", ShiftLeft:"hold", ShiftRight:"hold" };
+addEventListener("keydown", e => {
+  if (e.code === "KeyP" || e.code === "Escape") { togglePause(); e.preventDefault(); return; }
+  if (e.code === "Enter" && state !== "play") { $("start").click(); e.preventDefault(); return; }
+  const a = KEYMAP[e.code]; if (!a) return;
+  e.preventDefault(); if (e.repeat) return; press(a);
+});
+addEventListener("keyup", e => { const a = KEYMAP[e.code]; if (a) release(a); });
+addEventListener("blur", () => { for (const k in held) delete held[k]; if (state === "play") togglePause(); });
+document.querySelectorAll("#touch button, .pills button").forEach(b => {
+  const a = b.dataset.a;
+  b.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (a === "pause") { if (state === "play" || state === "pause") togglePause(); else $("start").click(); return; }
+    b.setPointerCapture?.(e.pointerId); press(a);
+  });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach(ev => b.addEventListener(ev, () => release(a)));
+});
+// tap the board itself to rotate (handy for the right thumb)
+bc.addEventListener("pointerdown", e => { if (e.pointerType !== "mouse") { e.preventDefault(); act("rot"); } });
+document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") togglePause(); });
+
+/* ---------- boot: show a sample stack behind the start card ---------- */
+state = "idle";
+grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+const sample = ["..........","..........","J.......IZ","JJJ.OO..IZZ","SS.LOOTTIZ","SSLLLTTTTI"].slice(-5);
+const types = "IOTSZJL";
+sample.forEach((row, i) => [...row.slice(0, 10)].forEach((ch, c) => { if (types.includes(ch)) grid[ROWS - sample.length + i][c] = ch; }));
+queue = ["T","I","L"]; holdType = "S";
+buildHero();
+try { document.fonts?.load('40px "Yuji Boku"', '火焰斬冰凍雷電聖光疾風！'); } catch(e) {}   // warm up the brush font
+layout(); updateHUD = updateHUD; $("best").textContent = best ? `最高紀錄 ${best.toLocaleString()}` : "";
+score = 0; lines = 0; level = 1; updateHUD();
+requestAnimationFrame(frame);
+})();
+</script>

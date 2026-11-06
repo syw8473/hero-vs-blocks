@@ -1,0 +1,3 @@
+# local backups from earlier versions (git history keeps them now)
+*_備份_*.html
+.DS_Store
