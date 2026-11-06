@@ -670,8 +670,20 @@ let foe = null, foeBox = null, nextFoeT = 0, kills = 0, lvKills = 0, laneMsg = n
 function spawnFoe(){
   const boss = lines >= normalEnd(level), remain = stageEnd(level) - lines;
   let def, shift = 0, prefix = "";
-  if (boss) { def = BOSSES[(level - 1) % BOSSES.length]; if (level > BOSSES.length) shift = 30 + Math.random() * 300; }
-  else { const k = (level - 1) * 3 + lvKills; def = MONSTERS[k % 30]; shift = Math.floor(k / 30) * 97 % 360; }
+  if (boss) {   // every 10th stage brings the Dark Hero; otherwise a random boss (not the last one); repeat visits get a random colour
+    const dark = BOSSES.length - 1;
+    let bi;
+    if (level % 10 === 0) bi = dark;
+    else do bi = Math.random() * dark | 0; while (bi === lastBoss);
+    lastBoss = bi; def = BOSSES[bi];
+    if (seenBosses.has(bi)) shift = 30 + Math.random() * 300;
+    seenBosses.add(bi);
+  } else {     // the very first foe of a run is the jelly; after that any of the 30, never twice in a row
+    let mi;
+    if (kills === 0 && level === 1) mi = 0;
+    else do mi = Math.random() * MONSTERS.length | 0; while (mi === lastMob);
+    lastMob = mi; def = MONSTERS[mi];
+  }
   const pal = palette(def[1], shift);
   if (boss && shift) prefix = HUE_NAMES[Math.round(toHsl(pal.a)[0] / 45) % 8] + "・";
   const spr = foeSprite(def, pal);
@@ -737,7 +749,8 @@ function drawBurst(m, W, H){
   }
   lx.textAlign = "start";
 }
-function resetBattle(){ foe = null; nextFoeT = 0; kills = 0; lvKills = 0; laneMsg = null; laneParts = []; hero.down = false; hero.atk = 0; }
+let lastMob = -1, lastBoss = -1, seenBosses = new Set();
+function resetBattle(){ foe = null; nextFoeT = 0; kills = 0; lvKills = 0; laneMsg = null; laneParts = []; hero.down = false; hero.atk = 0; lastMob = -1; lastBoss = -1; seenBosses.clear(); }
 
 function updateLane(dt){
   const W = laneW, H = laneH, s = dt / 1000, floor = H - 6;
