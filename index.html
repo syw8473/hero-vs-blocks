@@ -1323,6 +1323,17 @@ function musicBus(){   // the melody goes through a soft echo for a roomy, airy 
   }
   return mBus;
 }
+let mSess = null;
+function musicOut(fresh){   // the current tune's own outputs (dry + echo send); a fresh one fades the old tune out in ~30 ms
+  if (fresh && mSess) {
+    const old = mSess, t = actx.currentTime;
+    [old.dry, old.lead].forEach(g => { g.gain.setTargetAtTime(0, t, .01); setTimeout(() => g.disconnect(), 400); });
+    mSess = null;
+  }
+  if (!mSess) { const dry = actx.createGain(), lead = actx.createGain(); dry.connect(mGain); lead.connect(musicBus()); mSess = { dry, lead }; }
+  return mSess;
+}
+function restartMusic(at){ musicOut(true); mStep = 0; mNext = Math.max(at || 0, actx.currentTime + .05); }
 function mnote(freq, t, dur, vol, lead){
   const o = actx.createOscillator(), g = actx.createGain();
   if (lead) o.setPeriodicWave(pulse()); else o.type = "triangle";
@@ -1330,7 +1341,7 @@ function mnote(freq, t, dur, vol, lead){
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .015);
   g.gain.setTargetAtTime(vol * .55, t + .05, .15);   // gentle decay to a soft sustain
   g.gain.setTargetAtTime(0, t + dur, .06);
-  o.connect(g).connect(lead ? musicBus() : mGain); o.start(t); o.stop(t + dur + .4);
+  o.connect(g).connect(lead ? musicOut().lead : musicOut().dry); o.start(t); o.stop(t + dur + .4);
 }
 /* Each track is 8 bars of 8th notes. bass: a root per bar (played in the track's bass pattern) or an explicit 8-note bar.
    mel: 8 slots per bar — a MIDI note, 0 = rest, 1 = hold the previous note. All tunes are original, written in the
@@ -1414,24 +1425,25 @@ function bnote(freq, t, dur, vol, type){
   const o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(freq, t);
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .005); g.gain.setTargetAtTime(0, t + dur * .6, .03);
-  o.connect(g).connect(mGain); o.start(t); o.stop(t + dur + .2);
+  o.connect(g).connect(musicOut().dry); o.start(t); o.stop(t + dur + .2);
 }
 function drum(t, kind){
   if (kind === "kick") {
     const o = actx.createOscillator(), g = actx.createGain(); o.type = "triangle";
     o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + .12);
     g.gain.setValueAtTime(.9, t); g.gain.exponentialRampToValueAtTime(.001, t + .15);
-    o.connect(g).connect(mGain); o.start(t); o.stop(t + .18); return;
+    o.connect(g).connect(musicOut().dry); o.start(t); o.stop(t + .18); return;
   }
   const n = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain(), snare = kind === "snare";
   n.buffer = white(actx); fl.type = "highpass"; fl.frequency.value = snare ? 1500 : 7000;
   const v = snare ? .5 : .12, d = snare ? .12 : .04;
   g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + d);
-  n.connect(fl).connect(g).connect(mGain); n.start(t); n.stop(t + d + .02);
+  n.connect(fl).connect(g).connect(musicOut().dry); n.start(t); n.stop(t + d + .02);
 }
 function trackTick(tr){
   const step = 60 / tr.bpm / 2;
-  while (mNext < actx.currentTime + .15) {
+  if (mNext < actx.currentTime - .02) mNext = actx.currentTime + .02;   // fell behind (busy phone): skip, don't pile up
+  while (mNext < actx.currentTime + .3) {
     const i = mStep % (tr.mel.length * 8), bar = i >> 3, j = i & 7, b = tr.bass[bar], mel = tr.mel[bar];
     const root = Array.isArray(b) ? b[0] : b, bn = Array.isArray(b) ? b[j] : b + BASS_STYLE[tr.style][j];
     if (bn) bnote(N(bn), mNext, step * .8, tr.bassWave ? .3 : .55, tr.bassWave || "triangle");   // driving bass
@@ -1462,36 +1474,37 @@ const TITLE_TRACK = { name: "序曲・勇者的旅程", bpm: 116, style: "octave
 let mMode = "", titleAt = 0;
 function gameOverJingle(){   // a slow falling phrase in A minor that settles on a low, dark chord (about 4 s), then the main theme returns
   const a = actx; if (!a || !musicOn || a.state !== "running") { titleAt = 0; return; }
+  musicOut(true);
   const t = a.currentTime + .15, q = .42;
   [[76, 0, 1], [74, 1, 1], [72, 2, 1], [71, 3, 2], [72, 5, .5], [69, 5.5, 3]].forEach(([m, at, len]) => mnote(N(m), t + at * q, len * q * .95, .42, true));
   [[45, 0, 2], [41, 2, 2], [40, 4, 1.5], [33, 5.5, 3]].forEach(([m, at, len]) => bnote(N(m), t + at * q, len * q, .5, "triangle"));
   [57, 60, 64].forEach(m => bnote(N(m), t + 5.5 * q, 3 * q, .05, "sawtooth"));
   titleAt = t + 8.8 * q;
-  mStep = 0; mNext = Math.max(mNext, titleAt);
+  mStep = 0; mNext = titleAt;
 }
 function musicTick(){
   if (state !== "play") {   // title and game-over screens play the main theme (after the game-over phrase has finished)
-    if (mMode !== "title") { mMode = "title"; mStep = 0; mBoss = false; }
+    if (mMode !== "title") { mMode = "title"; mBoss = false; restartMusic(titleAt); }
     if (actx.currentTime < titleAt) mNext = Math.max(mNext, titleAt);
     trackTick(TITLE_TRACK); return;
   }
-  if (mMode !== "play") { mMode = "play"; mStep = 0; mNext = Math.max(mNext, actx.currentTime + .05); titleAt = 0; }
+  if (mMode !== "play") { mMode = "play"; titleAt = 0; restartMusic(); }
   const boss = !!(foe && foe.boss && state === "play");
   if (level !== trackLv) {   // a new stage picks a different field theme at random, kept until the next stage
     trackLv = level;
     let k; do k = Math.random() * TRACKS.length | 0; while (k === trackIdx);
-    trackIdx = k; if (!boss) mStep = 0;
+    trackIdx = k; if (!boss) restartMusic();
   }
   if (boss !== mBoss) {   // the boss theme and the field theme each start from the top
-    mBoss = boss; mStep = 0;
+    mBoss = boss; restartMusic();
     if (boss) { let k; do k = Math.random() * BOSS_TRACKS.length | 0; while (k === bossIdx); bossIdx = k; }   // a different boss theme each boss
   }
   trackTick(boss ? BOSS_TRACKS[bossIdx] : TRACKS[trackIdx]);
 }
 function musicSync(){
   const should = musicOn && state !== "pause" && actx && actx.state === "running" && !document.hidden;   // battle themes in play, the main theme on the title / game-over screens
-  if (should && !mTimer) { mNext = actx.currentTime + .05; mTimer = setInterval(musicTick, 25); }
-  else if (!should && mTimer) { clearInterval(mTimer); mTimer = null; }
+  if (should && !mTimer) { musicOut(true); mNext = Math.max(titleAt, actx.currentTime + .05); mTimer = setInterval(musicTick, 25); }
+  else if (!should && mTimer) { clearInterval(mTimer); mTimer = null; musicOut(true); }   // pause / hide: cut what was queued
 }
 function updateMusicBtn(){ $("music-btn").textContent = musicOn ? "音樂：開" : "音樂：關"; }
 $("music-btn").addEventListener("click", () => {
