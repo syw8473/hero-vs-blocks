@@ -341,6 +341,7 @@ function lock(){
     spinBanner = { text: (spin === "mini" ? "MINI " : "") + "T-SPIN" + ["", " SINGLE", " DOUBLE", " TRIPLE"][full.length] + "!", t: 1700 };
     if (full.length && laneMsg && laneMsg.bubble) laneMsg.sub = "T-SPIN" + (laneMsg.sub ? " " + laneMsg.sub : "");
     sfxTSpin(full.length);
+    if (full.length) ultFx = { e: clearElem, t: 0, dur: 1300, box: null };   // the elemental finisher over the monster
   }
   cur = null; canHold = true;
   updateHUD();
@@ -764,8 +765,8 @@ function drawBurst(m, W, H){
   }
   lx.textAlign = "start";
 }
-let lastMob = -1, lastBoss = -1, seenBosses = new Set();
-function resetBattle(){ foe = null; nextFoeT = 0; kills = 0; lvKills = 0; laneMsg = null; laneParts = []; hero.down = false; hero.atk = 0; lastMob = -1; lastBoss = -1; seenBosses.clear(); }
+let lastMob = -1, lastBoss = -1, seenBosses = new Set(), ultFx = null;
+function resetBattle(){ foe = null; nextFoeT = 0; kills = 0; lvKills = 0; laneMsg = null; laneParts = []; hero.down = false; hero.atk = 0; ultFx = null; lastMob = -1; lastBoss = -1; seenBosses.clear(); }
 
 function updateLane(dt){
   const W = laneW, H = laneH, s = dt / 1000, floor = H - 6;
@@ -829,6 +830,13 @@ function updateLane(dt){
       }
     } else if (foe && foe.pendingKill) { foe.pendingKill = false; foe.hp = foe.hpTarget; foe.die = 650; }   // safety: never leave a kill hanging
     if (spr) lx.drawImage(spr, hx, hy, hw, hh);
+  }
+  // T-spin ultimate: plays for 1.3 s over the monster (keeps its last spot if the monster falls mid-effect)
+  if (ultFx) {
+    ultFx.t += dt;
+    if (foeBox) ultFx.box = { ...foeBox };
+    if (ultFx.box) drawUltimate(lx, ultFx.e, ultFx.box, Math.min(1, ultFx.t / ultFx.dur), W, H, hero.t);
+    if (ultFx.t >= ultFx.dur) ultFx = null;
   }
   // bits
   laneParts = laneParts.filter(p => (p.life -= dt) > 0);
@@ -894,6 +902,122 @@ function drawWorld(){   // full-screen scene whose horizon lines up with the lan
   x.fillStyle = g; x.fillRect(0, y0, cv.width, fade);
   x.fillStyle = "rgba(6,12,18,.5)"; x.fillRect(0, y0 + fade, cv.width, cv.height);
 }
+/* ---------- T-spin ultimate: a big elemental finisher drawn over the monster during the combo ---------- */
+// t runs 0 → 1 across the combo; fb = the monster's box on the lane; everything snaps to the lane's pixel grid
+function drawUltimate(ctx, elem, fb, t, W, H, time){
+  const P = PX, snap = v => Math.round(v / P) * P, R = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(snap(x), snap(y), Math.max(P, snap(w)), Math.max(P, snap(h))); };
+  const cx = fb.x + fb.fw / 2, cy = fb.y + fb.fh / 2, base = H - 6, grow = Math.min(1, t / .22), fade = t > .85 ? 1 - (t - .85) / .15 : 1;
+  ctx.save(); ctx.globalAlpha = fade;
+  if (elem === "fire") {          // pillar of fire erupting from under the monster up past the top of the lane
+    const w = Math.max(fb.fw * 1.05, 10 * P), top = base - (base + 4 * P) * grow;
+    for (let x = cx - w / 2; x < cx + w / 2; x += P) {
+      const u = Math.abs(x - cx) / (w / 2), h = (base - top) * (1 - u * u * .35) * (.85 + Math.random() * .2);
+      R(x, base - h, P, h, "#c8301c");
+      if (u < .75) R(x, base - h * .9, P, h * .9, "#f08a30");
+      if (u < .4) R(x, base - h * .8, P, h * .8, "#fcd83c");
+      if (u < .15) R(x, base - h * .7, P, h * .7, "#fff6c0");
+    }
+    for (let i = 0; i < 16; i++) R(cx + (Math.random() - .5) * w * 1.8, base - Math.random() * base * grow, P, P, Math.random() < .5 ? "#fcd83c" : "#f08a30");
+  } else if (elem === "thunder") { // white flash, then a huge forked bolt slams into the monster
+    if (t < .14) { ctx.fillStyle = `rgba(255,255,240,${.75 * (1 - t / .14)})`; ctx.fillRect(0, 0, W, H); }
+    const bolt = (x0, y0, x1, y1, thick, jag) => {   // glow pass, gold body, white-hot core
+      const steps = Math.max(3, Math.round((y1 - y0) / (3 * P))), pts = [[x0, y0]];
+      for (let i = 1; i <= steps; i++) pts.push([i === steps ? x1 : x0 + (x1 - x0) * i / steps + (Math.random() - .5) * jag, y0 + (y1 - y0) * i / steps]);
+      [[thick + 4, "rgba(255,242,122,.45)"], [thick, "#ffd400"], [Math.max(1, thick - 2), "#ffffff"]].forEach(([th, col]) => {
+        for (let i = 1; i < pts.length; i++) {
+          const [px, py] = pts[i - 1], [nx, ny] = pts[i], n = Math.max(1, Math.round(Math.hypot(nx - px, ny - py) / P));
+          for (let k = 0; k <= n; k++) R(px + (nx - px) * k / n - th * P / 2, py + (ny - py) * k / n, th * P, P, col);
+        }
+      });
+    };
+    const reach = Math.min(1, t / .12), hitY = fb.y + fb.fh * .55;
+    bolt(cx - 3 * P, -P, cx, -P + (hitY + P) * reach, 3, 5 * P);
+    if (t > .12) { bolt(cx - P, hitY * .3, cx - 8 * P, hitY * .85, 1, 3 * P); bolt(cx + P, hitY * .45, cx + 7 * P, hitY, 1, 3 * P); }
+    // three more strikes from the sky converging on the monster, landing one after another
+    [[-14, .14, -2], [12, .2, 2], [-6, .26, 1]].forEach(([dx, at, ex]) => { if (t > at) bolt(cx + dx * P, -P, cx + ex * P, hitY + (Math.random() - .5) * 2 * P, 2, 4 * P); });
+    if (t > .12) for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, r = (fb.fw * .35) + Math.random() * fb.fw * .45; R(cx + Math.cos(a) * r, hitY + Math.sin(a) * r * .6, P, P, Math.random() < .5 ? "#ffffff" : "#ffd400"); }
+  } else if (elem === "ice") {     // a cluster of pointed ice crystals bursts up around the monster and seals it in
+    const shard = (bx, ang, len, wd) => {   // a long kite: lit left face, shaded right face, bright spine, dark rim
+      const a = ang * Math.PI / 180, dx = Math.sin(a), dy = -Math.cos(a), nx = -dy, ny = dx, L = len * grow;
+      for (let s2 = 0; s2 <= L; s2 += P * .5) {
+        const u = s2 / Math.max(1, len), hw = wd * (u < .3 ? .55 + u * 1.5 : (1 - u) / .7);
+        if (hw <= 0) continue;
+        const px = bx + dx * s2, py = base + dy * s2;
+        for (let k = -hw; k <= hw; k += P * .5) {
+          const edge = Math.abs(k) > hw - P * .7;
+          R(px + nx * k, py + ny * k, P, P, edge ? "#2f78c0" : k < -hw * .15 ? "#e8f8ff" : k < hw * .2 ? "#9ad4ff" : "#4f9ee8");
+        }
+        R(px - nx * hw * .1, py - ny * hw * .1, P, P, "#ffffff");
+      }
+    };
+    const span = fb.fw * .7, tall = Math.max(fb.fh * 1.5, 20 * P);
+    [[-58, .55, .7], [58, .55, .7], [-38, .75, .85], [38, .75, .85], [-16, .95, 1], [16, .92, 1], [0, 1.08, 1.1]].forEach(([ang, lf, wf], i) => {
+      shard(cx + ang / 58 * span * .45, ang, tall * lf, 3.4 * P * wf);
+    });
+    for (let i = 0; i < 10; i++) R(cx + (Math.random() - .5) * span * 2.2, base - Math.random() * tall * grow, P, P, "#ffffff");   // frost sparkles
+  } else if (elem === "holy") {   // a radiant cross drops, flashes on impact, pours light outward, then dissolves into rising motes
+    const fall = Math.min(1, t / .2), drop = 1 - Math.pow(1 - fall, 3), landed = t >= .2, after = landed ? (t - .2) / .8 : 0;
+    const arm = Math.max(fb.fw * .85, 12 * P), len = base * .95, bw = 4 * P, topY = base - len - (1 - drop) * base, hy = topY + len * .3;
+    const crossA = Math.max(0, 1 - Math.max(0, after - .2) / .55);   // holds a moment after impact, then fades away
+    if (landed && after < .1) { ctx.fillStyle = `rgba(255,252,230,${.6 * (1 - after / .1)})`; ctx.fillRect(0, 0, W, H); }   // impact flash
+    // radiant beams fanning out from the crossing, slowly turning, fading toward the ends
+    const reachR = W * (.18 + (landed ? after * .4 : 0)), glow = landed ? Math.min(1, after * 5) * (1 - after * .55) : .35 * drop;
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * 6.28 + time / 800, thick = i % 2 ? 2 : 1;
+      for (let r = 4 * P; r < reachR; r += P) {
+        ctx.globalAlpha = fade * glow * (1 - r / reachR);
+        R(cx + Math.cos(a) * r, hy + Math.sin(a) * r, thick * P, P, i % 2 ? "#fff2a0" : "#ffffff");
+      }
+    }
+    if (landed) for (let k = 0; k < 3; k++) {   // three rings of light spreading from the impact
+      const rr = (after * 1.5 - k * .22) * W * .42;
+      if (rr <= 0) continue;
+      ctx.globalAlpha = fade * Math.max(0, .85 - after) ;
+      for (let d = 0; d < 360; d += 8) { const a = d * Math.PI / 180; R(cx + Math.cos(a) * rr, hy + Math.sin(a) * rr * .55, P, P, k % 2 ? "#fff6c8" : "#ffd860"); }
+    }
+    // the cross: dark rim (reads on bright skies), gold edge, pale body, white-hot core
+    ctx.globalAlpha = fade * crossA;
+    R(cx - bw / 2 - 2 * P, topY - 2 * P, bw + 4 * P, len + 4 * P, "#5a3c08"); R(cx - arm / 2 - 2 * P, hy - bw / 2 - 2 * P, arm + 4 * P, bw + 4 * P, "#5a3c08");
+    R(cx - bw / 2 - P, topY - P, bw + 2 * P, len + 2 * P, "#e0b040"); R(cx - arm / 2 - P, hy - bw / 2 - P, arm + 2 * P, bw + 2 * P, "#e0b040");
+    R(cx - bw / 2, topY, bw, len, "#fff2a0"); R(cx - arm / 2, hy - bw / 2, arm, bw, "#fff2a0");
+    R(cx - P / 2, topY + P, P, len - 2 * P, "#ffffff"); R(cx - arm / 2 + P, hy - P / 2, arm - 2 * P, P, "#ffffff");
+    // dissolving: the cross breaks into motes of light that drift upward
+    if (after > .15) for (let i = 0; i < 46; i++) {
+      const onArm = i % 3 === 0, px = onArm ? cx - arm / 2 + Math.random() * arm : cx + (Math.random() - .5) * bw, py = onArm ? hy : topY + Math.random() * len;
+      ctx.globalAlpha = fade * Math.min(1, (after - .15) * 3) * (1 - after) * 1.4;
+      R(px + (Math.random() - .5) * 3 * P, py - Math.random() * (after - .15) * H * .6, P, P, i % 3 ? "#ffffff" : "#ffd860");
+    }
+    ctx.globalAlpha = fade;
+  } else if (elem === "dark") {   // a translucent purple gravity orb swallows the monster, its bands swirling inward
+    const r = Math.max(fb.fw, fb.fh) * .66 * grow;
+    for (let y = -r; y <= r; y += P) for (let x = -r; x <= r; x += P) {
+      const d = Math.hypot(x, y) / r;
+      if (d > 1) continue;
+      const swirl = Math.sin(d * 9 - time / 70 + Math.atan2(y, x) * 2);   // rotating spiral bands
+      ctx.fillStyle = d > .9 ? "rgba(200,120,255,.95)" : swirl > .55 ? "rgba(150,60,220,.55)" : d < .35 ? "rgba(20,4,40,.6)" : "rgba(70,20,120,.45)";
+      ctx.fillRect(snap(cx + x), snap(cy + y), P, P);
+    }
+    for (let i = 0; i < 14; i++) { const a = i / 14 * 6.28 + time / 200, rr = r * (1.12 + .08 * Math.sin(time / 150 + i)); R(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * .5, P, P, "#e0a0ff"); }   // orbit ring
+    for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, rr = r * (1.3 + Math.random() * .8) * (1 - (time / 350 % 1) * .45); R(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * .7, P, P, Math.random() < .5 ? "#9a3ae0" : "#c070ff"); }   // debris pulled in
+  } else {                         // wind: a thick green-white tornado with gust streaks and whirling leaves
+    const hgt = (base + 2 * P) * grow;
+    for (let y = 0; y < hgt; y += P) {
+      const u = y / base, rw = 3 * P + u * fb.fw * 1.15, sway = Math.sin(time / 110 + y * .08) * 3 * P;
+      for (let j = 0; j < 4; j++) {   // four ribbons wrap around the funnel
+        const ph = time / 70 + y * .22 + j * 1.57, x = cx + sway + Math.cos(ph) * rw, front = Math.sin(ph) > 0;
+        R(x, base - y, P * 2, P, front ? ((y / P | 0) % 3 ? "#ffffff" : "#46dca6") : "#9ef0cc");
+      }
+      if ((y / P | 0) % 3 === 0) { ctx.fillStyle = "rgba(200,246,226,.35)"; ctx.fillRect(snap(cx + sway - rw), snap(base - y), snap(rw * 2), P); }
+    }
+    for (let i = 0; i < 6; i++) {   // horizontal gust streaks across the lane
+      const y = base - (i + 1) * hgt / 7, len = (8 + (i * 5) % 9) * P, x = (cx - W * .45 + ((time / 1.6 + i * 97) % (W * .9)));
+      R(x, y, len, P, "rgba(255,255,255,.75)"); R(x + len * .3, y + P, len * .5, P, "rgba(158,240,204,.7)");
+    }
+    for (let i = 0; i < 16; i++) { const a = time / 90 + i * .9, rr = 4 * P + (i % 5) * 3 * P; R(cx + Math.cos(a) * rr * 1.4, base - (i * 7 % 30) * P * grow - Math.sin(a) * rr * .3, P, P, i % 3 ? "#5ad08a" : "#c8f6e2"); }   // leaves
+  }
+  ctx.restore();
+}
+
 /* ---------- pixel battle backdrops: one field scene per stage, castle hall for bosses ---------- */
 const SCENES = ["草原", "森林", "鄉鎮", "沙漠", "沼澤", "洞穴", "雨林"];
 let bgCache = { key: "", cv: null };
