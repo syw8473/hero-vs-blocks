@@ -329,6 +329,7 @@ function lock(){
     sfxTSpin(full.length);
     if (full.length) ultFx = { e: clearElem, t: 0, dur: 1300, box: null };   // the elemental finisher over the monster
   }
+  if (!spin && full.length === 4) ultFx = { e: clearElem, t: 0, dur: 1300, box: null };   // a four-line clear unleashes the finisher too
   cur = null; canHold = true;
   updateHUD();
   if (!full.length) advance();
