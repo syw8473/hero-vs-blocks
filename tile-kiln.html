@@ -759,7 +759,7 @@ function updateLane(dt){
   }
   // now playing: top centre, same chip and lettering as the monster name
   if (musicOn && trackIdx >= 0) {
-    const tn = "♪ " + (mBoss ? BOSS_TRACK.name : TRACKS[trackIdx].name);
+    const tn = "♪ " + (mBoss ? BOSS_TRACKS[bossIdx].name : TRACKS[trackIdx].name);
     lx.textBaseline = "top"; lx.font = '700 11px "Noto Sans TC", system-ui, sans-serif';
     const cw = lx.measureText(tn).width + 10, x0 = Math.round(W / 2 - cw / 2);
     lx.fillStyle = "rgba(20,16,28,.66)"; lx.beginPath(); lx.roundRect(x0, 1, cw, 15, 4); lx.fill();
@@ -1356,7 +1356,32 @@ const BOSS_TRACK = { name: "魔王戰", bpm: 152, style: "octave", bassWave: "sq
   bass: [40, 40, 41, 40, 36, 38, 35, 35],
   mel: [[76, 0, 79, 0, 77, 0, 76, 75], [76, 0, 0, 0, 71, 0, 0, 0], [77, 0, 81, 0, 80, 0, 77, 76], [75, 0, 0, 0, 71, 0, 0, 0],
         [84, 0, 83, 0, 81, 0, 79, 77], [79, 0, 77, 0, 76, 0, 74, 0], [76, 76, 77, 77, 80, 80, 81, 81], [83, 0, 0, 0, 71, 0, 75, 0]] };
-let mBoss = false, trackLv = 0, trackIdx = -1;
+// five more boss themes in the style of grand orchestral final-boss music: an organ pad holds each bar's chord,
+// the lead is doubled an octave down like massed brass, and chord qualities (major V, Neapolitan) add drama
+const M3 = [0, 4, 7], m3 = [0, 3, 7];
+const BOSS_TRACKS = [BOSS_TRACK,
+  { name: "魔王降臨", bpm: 132, style: "pedal", pad: true, double: true,         // D minor, stately, Neapolitan Eb
+    bass: [38, 38, 34, 33, 38, 38, 39, 33], chords: [m3, m3, M3, M3, m3, m3, M3, M3],
+    mel: [[74, 1, 1, 1, 77, 1, 76, 74], [73, 1, 1, 1, 69, 1, 1, 1], [70, 1, 74, 1, 77, 1, 82, 1], [81, 1, 1, 1, 1, 1, 0, 0],
+          [86, 1, 1, 1, 84, 1, 82, 81], [82, 1, 81, 1, 77, 1, 74, 1], [75, 1, 79, 1, 82, 1, 79, 75], [73, 1, 1, 1, 76, 1, 79, 1]] },
+  { name: "黑暗之王", bpm: 148, style: "octave", drums: true, stab: true, double: true,   // C minor, brass-like climb
+    bass: [36, 36, 32, 32, 41, 43, 36, 36], chords: [m3, m3, M3, M3, m3, M3, m3, m3],
+    mel: [[72, 1, 75, 1, 79, 1, 84, 1], [83, 1, 1, 1, 79, 1, 1, 1], [80, 1, 79, 1, 77, 1, 75, 1], [72, 1, 1, 1, 68, 1, 72, 75],
+          [77, 1, 80, 1, 84, 1, 1, 80], [83, 1, 1, 1, 79, 1, 74, 71], [72, 74, 75, 77, 79, 80, 83, 84], [84, 1, 1, 1, 0, 0, 79, 83]] },
+  { name: "混沌之塔", bpm: 160, style: "gallop", drums: true, pad: true,         // B minor, tritones and semitone clashes
+    bass: [35, 35, 36, 35, 31, 30, 31, 30], chords: [m3, m3, M3, m3, M3, M3, M3, M3],
+    mel: [[83, 1, 82, 1, 83, 1, 77, 1], [78, 1, 1, 1, 74, 1, 71, 1], [84, 1, 83, 1, 84, 1, 79, 1], [78, 1, 1, 1, 0, 74, 76, 78],
+          [79, 1, 83, 1, 86, 1, 85, 83], [82, 1, 78, 1, 73, 1, 78, 82], [83, 1, 86, 1, 91, 1, 90, 88], [85, 1, 82, 1, 78, 1, 73, 1]] },
+  { name: "終焉之鐘", bpm: 120, style: "pedal", pad: true, stab: true, double: true,   // E minor, a slow requiem with bells
+    bass: [40, 40, 36, 36, 45, 47, 40, 40], chords: [m3, m3, M3, M3, m3, M3, m3, m3],
+    mel: [[76, 1, 1, 1, 1, 1, 79, 78], [76, 1, 1, 1, 72, 1, 1, 1], [79, 1, 1, 1, 1, 1, 83, 81], [79, 1, 1, 1, 76, 1, 1, 1],
+          [84, 1, 1, 1, 83, 1, 81, 1], [83, 1, 1, 1, 78, 1, 75, 1], [76, 1, 79, 1, 83, 1, 88, 1], [87, 1, 1, 1, 1, 1, 0, 0]] },
+  { name: "最終決戰", bpm: 172, style: "octave", drums: true, stab: true, double: true, pad: true,   // G minor, the climax
+    bass: [43, 43, 39, 41, 43, 43, 38, 38], chords: [m3, m3, M3, M3, m3, m3, M3, M3],
+    mel: [[79, 82, 86, 1, 91, 1, 86, 1], [87, 1, 86, 1, 84, 1, 82, 1], [79, 1, 82, 1, 87, 1, 91, 1], [89, 1, 1, 1, 86, 1, 84, 1],
+          [86, 1, 1, 86, 87, 1, 86, 84], [82, 1, 1, 82, 84, 1, 82, 79], [78, 1, 81, 1, 84, 1, 86, 1], [90, 1, 1, 1, 0, 86, 90, 93]] },
+];
+let mBoss = false, trackLv = 0, trackIdx = -1, bossIdx = -1;
 function bnote(freq, t, dur, vol, type){
   const o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(freq, t);
@@ -1383,8 +1408,14 @@ function trackTick(tr){
     const root = Array.isArray(b) ? b[0] : b, bn = Array.isArray(b) ? b[j] : b + BASS_STYLE[tr.style][j];
     if (bn) bnote(N(bn), mNext, step * .8, tr.bassWave ? .3 : .55, tr.bassWave || "triangle");   // driving bass
     const m = mel[j];
-    if (m > 1) { let len = 1; while (j + len < 8 && mel[j + len] === 1) len++; mnote(N(m), mNext, step * (len - .1), .42, true); }   // lead
-    if (tr.stab && j === 0) [0, 3, 7].forEach(o => bnote(N(root + 24 + o), mNext, step * 1.6, .06, "sawtooth"));   // minor stab each bar
+    const chord = (tr.chords && tr.chords[bar]) || [0, 3, 7];
+    if (m > 1) {
+      let len = 1; while (j + len < 8 && mel[j + len] === 1) len++;
+      mnote(N(m), mNext, step * (len - .1), .42, true);                                        // lead
+      if (tr.double) bnote(N(m - 12), mNext, step * (len - .1), .07, "square");               // octave-down "brass" doubling
+    }
+    if (tr.stab && j === 0) chord.forEach(o => bnote(N(root + 24 + o), mNext, step * 1.6, .06, "sawtooth"));   // chord stab each bar
+    if (tr.pad && j === 0) chord.forEach(o => bnote(N(root + 36 + o), mNext, step * 7.5, .03, "sawtooth"));   // organ pad holds the bar
     if (tr.drums) drum(mNext, j % 4 === 0 ? "kick" : j % 4 === 2 ? "snare" : "hat");
     else if (j % 4 === 2) drum(mNext, "hat");   // just a light tick, like the old consoles' noise channel
     mNext += step; mStep++;
@@ -1397,8 +1428,11 @@ function musicTick(){
     let k; do k = Math.random() * TRACKS.length | 0; while (k === trackIdx);
     trackIdx = k; if (!boss) mStep = 0;
   }
-  if (boss !== mBoss) { mBoss = boss; mStep = 0; }   // the boss theme and the field theme each start from the top
-  trackTick(boss ? BOSS_TRACK : TRACKS[trackIdx]);
+  if (boss !== mBoss) {   // the boss theme and the field theme each start from the top
+    mBoss = boss; mStep = 0;
+    if (boss) { let k; do k = Math.random() * BOSS_TRACKS.length | 0; while (k === bossIdx); bossIdx = k; }   // a different boss theme each boss
+  }
+  trackTick(boss ? BOSS_TRACKS[bossIdx] : TRACKS[trackIdx]);
 }
 function musicSync(){
   const should = musicOn && state === "play" && actx && actx.state === "running" && !document.hidden;
