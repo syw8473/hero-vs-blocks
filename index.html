@@ -771,6 +771,14 @@ function updateLane(dt){
     lx.textAlign = "right"; lx.fillStyle = foe.boss ? "#ffb08a" : "#f4efe4"; lx.fillText(label, x0 + cw - 4, y0 + 1, W * .6); lx.textAlign = "start";
     if (foe.boss) for (let i = 0; i < foe.max; i++) { lx.fillStyle = i < foe.hp ? "#ff5048" : "#5a5060"; lx.fillRect(x0 + 5 + i * 11, y0 + 5, 8, 6); }
   }
+  // now playing: top centre, same chip and lettering as the monster name
+  if (musicOn && trackIdx >= 0) {
+    const tn = "♪ " + (mBoss ? BOSS_TRACK.name : TRACKS[trackIdx].name);
+    lx.textBaseline = "top"; lx.font = '700 11px "Noto Sans TC", system-ui, sans-serif';
+    const cw = lx.measureText(tn).width + 10, x0 = Math.round(W / 2 - cw / 2);
+    lx.fillStyle = "rgba(20,16,28,.66)"; lx.beginPath(); lx.roundRect(x0, 1, cw, 15, 4); lx.fill();
+    lx.textAlign = "center"; lx.fillStyle = "#f4efe4"; lx.fillText(tn, W / 2, 2); lx.textAlign = "start";
+  }
   // battle callouts
   if (laneMsg) {
     laneMsg.t -= dt;
