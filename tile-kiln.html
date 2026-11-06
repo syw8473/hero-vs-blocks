@@ -690,10 +690,11 @@ function spawnFoe(){
   foe = { name: prefix + def[0], boss, hp: boss ? remain : 1, max: boss ? remain : 1, spr, white: whiteOf(spr), pal, enter: 1, hit: 0, die: 0, t: 0 };
   if (boss && state === "play") { laneMsg = { text: "魔王出現！", t: 1300 }; sfxBoss(); }
 }
-const SWING_MS = 400;   // one sword stroke; clearing n lines chains n strokes
+// clearing n lines chains n strokes; the whole combo lasts 0.4 / 0.6 / 0.8 / 1.0 s, so each stroke gets quicker as the combo grows
+const comboMs = n => 400 + 200 * (n - 1);
 function battleHit(n, leveled){
   if (foe && foe.pendingKill) { foe.pendingKill = false; foe.die = 650; foe.hp = foe.hpTarget; }   // a new clear before the last combo finished
-  hero.swings = n; hero.combo = n * SWING_MS; hero.atk = hero.combo; hero.lastSwing = -1; hero.sparked = false;
+  hero.swings = n; hero.combo = comboMs(n); hero.swingMs = hero.combo / n; hero.atk = hero.combo; hero.lastSwing = -1; hero.sparked = false;
   // special-move name in a burst bubble, shown in the left third while the hero is over at the monster, for the whole combo
   laneMsg = { text: ELEMS[clearElem].name, ink: ELEMS[clearElem].ink, sub: n > 1 ? `×${n}` : "", bubble: true,
     t: Math.max(420, hero.combo * .85 - 90), delay: 90, age: 0, seed: Math.random() * 1e9 | 0 };
@@ -790,8 +791,8 @@ function updateLane(dt){
     if (hero.atk > 0) {
       hero.atk -= dt;
       // the combo: dash in on the first stroke, keep striking at the monster, step back after the last one
-      const T = hero.combo, el = T - Math.max(0, hero.atk), si = Math.min(hero.swings - 1, el / SWING_MS | 0), p = Math.min(1, (el - si * SWING_MS) / SWING_MS);
-      const reach = foeBox ? Math.max(homeX, foeBox.x - hw - 2) : homeX + 24, inT = SWING_MS * .3, outT = SWING_MS * .25;
+      const T = hero.combo, sw = hero.swingMs, el = T - Math.max(0, hero.atk), si = Math.min(hero.swings - 1, el / sw | 0), p = Math.min(1, (el - si * sw) / sw);
+      const reach = foeBox ? Math.max(homeX, foeBox.x - hw - 2) : homeX + 24, inT = sw * .3, outT = sw * .25;
       const k = el < inT ? el / inT : el > T - outT ? Math.max(0, (T - el) / outT) : 1;
       hx = Math.round((homeX + k * (reach - homeX)) / PX) * PX;
       if (p < .3) hy -= Math.round(2 * p / .3) * PX;   // little jump as the sword goes up
