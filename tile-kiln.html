@@ -207,7 +207,22 @@ const SHAPES = {
   J:[[1,0,0],[1,1,1],[0,0,0]],
   L:[[0,0,1],[1,1,1],[0,0,0]]
 };
-const KICKS = [[0,0],[-1,0],[1,0],[0,-1],[-2,0],[2,0],[-1,-1],[1,-1]];
+// Standard Rotation System wall kicks, keyed "from>to" over rotation states 0 (spawn), 1 (R), 2, 3 (L).
+// Written in SRS terms (x right, y up) and flipped to this board's y-down when used. Downward kicks make T-spin triples possible.
+const SRS_JLSTZ = {
+  "0>1": [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]], "1>0": [[0,0],[1,0],[1,-1],[0,2],[1,2]],
+  "1>2": [[0,0],[1,0],[1,-1],[0,2],[1,2]],     "2>1": [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+  "2>3": [[0,0],[1,0],[1,1],[0,-2],[1,-2]],    "3>2": [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+  "3>0": [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],  "0>3": [[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+};
+const SRS_I = {
+  "0>1": [[0,0],[-2,0],[1,0],[-2,-1],[1,2]],   "1>0": [[0,0],[2,0],[-1,0],[2,1],[-1,-2]],
+  "1>2": [[0,0],[-1,0],[2,0],[-1,2],[2,-1]],   "2>1": [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],
+  "2>3": [[0,0],[2,0],[-1,0],[2,1],[-1,-2]],   "3>2": [[0,0],[-2,0],[1,0],[-2,-1],[1,2]],
+  "3>0": [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],   "0>3": [[0,0],[-1,0],[2,0],[-1,2],[2,-1]],
+};
+// T-spin points (× level): [no lines, single, double, triple]; mini T-spins score lower
+const TSPIN_PTS = [400, 800, 1200, 1600], TSPIN_MINI_PTS = [100, 200, 400, 400];
 const LINE_PTS = [0,100,300,500,800];
 
 const $ = id => document.getElementById(id);
@@ -233,7 +248,7 @@ function nextFromBag(){
 }
 function spawn(type){
   const m = SHAPES[type].map(r => r.slice());
-  cur = { type, m, x: ((COLS - m[0].length) / 2) | 0, y: type === "I" ? -1 : 0 };
+  cur = { type, m, x: ((COLS - m[0].length) / 2) | 0, y: type === "I" ? -1 : 0, r: 0, spin: false, kick: 0 };   // r = rotation state, spin = last move was a rotation
   lockT = 0; lockMoves = 0;
   if (collide(cur.m, cur.x, cur.y)) gameOver();
 }
@@ -249,16 +264,24 @@ function collide(m, x, y){
 const grounded = () => collide(cur.m, cur.x, cur.y + 1);
 function touchLock(){ if (grounded() && lockMoves < 15) { lockT = 0; lockMoves++; } }
 
-function move(dx){ if (!collide(cur.m, cur.x + dx, cur.y)) { cur.x += dx; touchLock(); return true; } return false; }
+function move(dx){ if (!collide(cur.m, cur.x + dx, cur.y)) { cur.x += dx; cur.spin = false; touchLock(); return true; } return false; }
 function rotate(dir){
   if (cur.type === "O") return;
-  const m = dir > 0 ? rot(cur.m) : rotCCW(cur.m);
-  for (const [kx, ky] of KICKS) if (!collide(m, cur.x + kx, cur.y + ky)) { cur.m = m; cur.x += kx; cur.y += ky; touchLock(); fxRotate(); return; }
+  const m = dir > 0 ? rot(cur.m) : rotCCW(cur.m), to = (cur.r + (dir > 0 ? 1 : 3)) % 4;
+  const tests = (cur.type === "I" ? SRS_I : SRS_JLSTZ)[cur.r + ">" + to];
+  for (let k = 0; k < tests.length; k++) {
+    const kx = tests[k][0], ky = -tests[k][1];
+    if (!collide(m, cur.x + kx, cur.y + ky)) {
+      cur.m = m; cur.x += kx; cur.y += ky; cur.r = to; cur.spin = true; cur.kick = k;
+      touchLock(); fxRotate(); return;
+    }
+  }
 }
-function soft(){ if (!grounded()) { cur.y++; score += 1; dropAcc = 0; updateHUD(); } }
+function soft(){ if (!grounded()) { cur.y++; cur.spin = false; score += 1; dropAcc = 0; updateHUD(); } }
 function hardDrop(){
   const y0 = cur.y; let n = 0;
   while (!grounded()) { cur.y++; n++; }
+  if (n) cur.spin = false;   // dropping after the turn means it wasn't a spin
   score += n * 2; fxTrail(cur, y0, n);
   hardFlag = true; lock(); hardFlag = false;
 }
@@ -268,7 +291,16 @@ function hold(){
   if (holdType) spawn(holdType); else spawn(queue.shift()), queue.push(nextFromBag());
   holdType = t; canHold = false; drawSide();
 }
+function tSpinKind(){   // 3-corner rule: "full", "mini" or "" — checked before the T is written into the grid
+  if (cur.type !== "T" || !cur.spin) return "";
+  const solid = (x, y) => x < 0 || x >= COLS || y >= ROWS || (y >= 0 && !!grid[y][x]);
+  const c = [[cur.x, cur.y], [cur.x + 2, cur.y], [cur.x + 2, cur.y + 2], [cur.x, cur.y + 2]].map(([x, y]) => solid(x, y));   // TL TR BR BL
+  if (c.filter(Boolean).length < 3) return "";
+  const front = [[0, 1], [1, 2], [2, 3], [3, 0]][cur.r];   // the two corners on the side the T points to
+  return (c[front[0]] && c[front[1]]) || cur.kick === 4 ? "full" : "mini";
+}
 function lock(){
+  const spin = tSpinKind();
   for (let r = 0; r < cur.m.length; r++) for (let c = 0; c < cur.m[r].length; c++) {
     if (!cur.m[r][c]) continue;
     const gy = cur.y + r;
@@ -285,11 +317,16 @@ function lock(){
     // the normal phase can't spill past its 10 lines: the boss must always be fought (extra lines still score)
     const add = lines < normalEnd(level) ? Math.min(full.length, normalEnd(level) - lines) : full.length;
     lines += add;
-    score += LINE_PTS[full.length] * level;
+    score += (spin ? (spin === "mini" ? TSPIN_MINI_PTS : TSPIN_PTS)[full.length] : LINE_PTS[full.length]) * level;
     level = levelFor(lines);
     battleHit(full.length, level > prevLevel);
     sfxClear(full.length);
     if (level > prevLevel) { fireworks(level); sfxLevel(.35); }
+  } else if (spin) score += (spin === "mini" ? TSPIN_MINI_PTS : TSPIN_PTS)[0] * level;
+  if (spin) {   // banner on the board, a tag on the special-move bubble, and a sparkle
+    spinBanner = { text: (spin === "mini" ? "MINI " : "") + "T-SPIN" + ["", " SINGLE", " DOUBLE", " TRIPLE"][full.length] + "!", t: 1700 };
+    if (full.length && laneMsg && laneMsg.bubble) laneMsg.sub = "T-SPIN" + (laneMsg.sub ? " " + laneMsg.sub : "");
+    sfxTSpin(full.length);
   }
   cur = null; canHold = true;
   updateHUD();
@@ -1143,7 +1180,7 @@ function fxRotate(){
 }
 
 /* ---------- 8-bit fireworks on level up ---------- */
-let rockets = [], sparks = [], banner = null;
+let rockets = [], sparks = [], banner = null, spinBanner = null;
 function fireworks(lv){
   const W = COLS * cell, H = ROWS * cell;
   for (let i = 0; i < 5; i++) rockets.push({ x: W * (.15 + Math.random() * .7), y: H, vy: -(H * 1.3 + Math.random() * H * .3), delay: i * 280, c: FW[i % FW.length], fuse: 600 + Math.random() * 250 });
@@ -1152,7 +1189,7 @@ function fireworks(lv){
 function drawFx(dt){
   const W = COLS * cell, H = ROWS * cell, g = 4, s = dt / 1000;
   fxx.clearRect(0, 0, W, H);
-  if (!rockets.length && !sparks.length && !banner && !parts.length && !flashes.length && shakeT <= 0) return;
+  if (!rockets.length && !sparks.length && !banner && !spinBanner && !parts.length && !flashes.length && shakeT <= 0) return;
   // landing / rotation effects
   if (shakeT > 0) {
     shakeT -= dt;
@@ -1197,14 +1234,20 @@ function drawFx(dt){
     p.vx *= .98; p.vy = p.vy * .98 + H * .25 * s; p.x += p.vx * s; p.y += p.vy * s;
     if (p.life > 400 || (p.life / 90 | 0) % 2) dot(p.x, p.y, p.c);   // twinkle out
   });
+  const drawBanner = (b, y, colA, colB) => {
+    let fs = Math.max(12, Math.round(cell * .7));
+    fxx.font = `${fs}px "Press Start 2P", monospace`;
+    while (fs > 8 && fxx.measureText(b.text).width > W * .94) { fs--; fxx.font = `${fs}px "Press Start 2P", monospace`; }   // long texts shrink to fit
+    fxx.textAlign = "center"; fxx.textBaseline = "middle";
+    fxx.fillStyle = C.line; fxx.fillText(b.text, W / 2 + 3, y + 3);
+    fxx.fillStyle = (b.t / 150 | 0) % 2 ? colA : colB; fxx.fillText(b.text, W / 2, y);
+    fxx.textAlign = "start";
+  };
+  if (spinBanner) { spinBanner.t -= dt; if (spinBanner.t <= 0) spinBanner = null; else drawBanner(spinBanner, H * .32, "#c070ff", "#7ae0ff"); }
   if (banner) {
     banner.t -= dt;
     if (banner.t <= 0) { banner = null; return; }
-    const fs = Math.max(12, Math.round(cell * .7));
-    fxx.font = `${fs}px "Press Start 2P", monospace`; fxx.textAlign = "center"; fxx.textBaseline = "middle";
-    fxx.fillStyle = C.line; fxx.fillText(banner.text, W / 2 + 3, H * .45 + 3);
-    fxx.fillStyle = (banner.t / 150 | 0) % 2 ? "#fcd83c" : "#ffffff"; fxx.fillText(banner.text, W / 2, H * .45);
-    fxx.textAlign = "start";
+    drawBanner(banner, H * .45, "#fcd83c", "#ffffff");
   }
 }
 
@@ -1254,6 +1297,9 @@ function getNoise(a){
     for (let i = 0; i < d.length; i++) { if (i % 10 === 0) v = Math.random() * 2 - 1; d[i] = v; }
   }
   return noiseBuf;
+}
+function sfxTSpin(n){   // a quick twinkling run up, longer for bigger T-spins
+  [88, 91, 95, 100, 103, 107].slice(0, 3 + n).forEach((m, i) => tone(N(m), .04 + i * .045, .09, "triangle", .1));
 }
 function sfxRotate(){   // quick rising blip
   const a = actx; if (!a || !soundOn) return;
@@ -1513,7 +1559,7 @@ function frame(t){
     } else if (cur) {
       const interval = Math.max(60, 800 * Math.pow(.85, level - 1));
       if (grounded()) { lockT += dt; if (lockT >= 500) lock(); }
-      else { dropAcc += dt; if (dropAcc >= interval) { cur.y++; dropAcc = 0; } }
+      else { dropAcc += dt; if (dropAcc >= interval) { cur.y++; cur.spin = false; dropAcc = 0; } }
       tickRepeat(dt);
     }
   }
