@@ -1313,7 +1313,47 @@ function mnote(freq, t, dur, vol, lead){
   g.gain.setTargetAtTime(0, t + dur, .06);
   o.connect(g).connect(lead ? musicBus() : mGain); o.start(t); o.stop(t + dur + .4);
 }
+/* boss battle theme: E minor, 152 bpm in 4/4, driving octave bass, a restless lead and a drum kit (8 bars of 8ths) */
+let mBoss = false;
+const BOSS_BASS = [40, 40, 41, 40, 36, 38, 35, 35];   // E E F E C D B B — the E/F semitone rub keeps it uneasy
+const BOSS_MEL = [
+  [76, 0, 79, 0, 77, 0, 76, 75], [76, 0, 0, 0, 71, 0, 0, 0], [77, 0, 81, 0, 80, 0, 77, 76], [75, 0, 0, 0, 71, 0, 0, 0],
+  [84, 0, 83, 0, 81, 0, 79, 77], [79, 0, 77, 0, 76, 0, 74, 0], [76, 76, 77, 77, 80, 80, 81, 81], [83, 0, 0, 0, 71, 0, 75, 0]
+];
+function bnote(freq, t, dur, vol, type){
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .005); g.gain.setTargetAtTime(0, t + dur * .6, .03);
+  o.connect(g).connect(mGain); o.start(t); o.stop(t + dur + .2);
+}
+function drum(t, kind){
+  if (kind === "kick") {
+    const o = actx.createOscillator(), g = actx.createGain(); o.type = "triangle";
+    o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + .12);
+    g.gain.setValueAtTime(.9, t); g.gain.exponentialRampToValueAtTime(.001, t + .15);
+    o.connect(g).connect(mGain); o.start(t); o.stop(t + .18); return;
+  }
+  const n = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain(), snare = kind === "snare";
+  n.buffer = white(actx); fl.type = "highpass"; fl.frequency.value = snare ? 1500 : 7000;
+  const v = snare ? .5 : .12, d = snare ? .12 : .04;
+  g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + d);
+  n.connect(fl).connect(g).connect(mGain); n.start(t); n.stop(t + d + .02);
+}
+function bossTick(){
+  const step = 60 / 152 / 2;
+  while (mNext < actx.currentTime + .15) {
+    const i = mStep % 64, bar = i >> 3, j = i & 7, root = BOSS_BASS[bar], m = BOSS_MEL[bar][j];
+    bnote(N(root + (j % 2 ? 12 : 0)), mNext, step * .8, .3, "square");    // driving octave bass
+    if (m) mnote(N(m), mNext, step * .85, .42, true);                     // tense lead
+    if (j === 0) [0, 3, 7].forEach(o => bnote(N(root + 24 + o), mNext, step * 1.6, .07, "sawtooth"));   // minor stab on each bar
+    drum(mNext, j % 4 === 0 ? "kick" : j % 4 === 2 ? "snare" : "hat");
+    mNext += step; mStep++;
+  }
+}
 function musicTick(){
+  const boss = !!(foe && foe.boss && state === "play");
+  if (boss !== mBoss) { mBoss = boss; mStep = 0; }   // switch tracks from the top of the new tune
+  if (boss) { bossTick(); return; }
   const bpm = Math.min(108, 92 + (level - 1) * 2), step = 60 / bpm / 2;   // relaxed waltz, only barely quickens with level
   while (mNext < actx.currentTime + .15) {
     const i = mStep % 96, bar = (i / 6) | 0, j = i % 6, ch = CHORDS[bar], m = MEL[i];

@@ -4,6 +4,16 @@
 
 **直接玩：** https://syw8473.github.io/hero-vs-blocks/
 
+## 安裝成 App（可離線玩）
+
+用手機打開上面的網址玩一次，再照下面操作，桌面就會多一個勇者圖示。之後沒有網路也能玩。
+
+- **iPhone（Safari）：** 點下方「分享」→「加入主畫面」
+- **Android（Chrome）：** 點右上角「⋮」→「安裝應用程式」或「加到主畫面」
+- **電腦（Chrome / Edge）：** 網址列右邊的「安裝」圖示
+
+更新遊戲後，App 會在下次連網打開時自動換成新版。
+
 ## 玩法
 
 - 排滿一整層磚塊就會消掉，勇者同時出招攻擊怪物
@@ -11,6 +21,7 @@
 - 每 10 層一關；剩 4 層內就升級時魔王登場，血量等於剩下層數
 - 30 種怪物、11 種魔王（含黑暗勇者），第 12 關起魔王隨機換色
 - 7 種戰鬥場景（草原、森林、鄉鎮、沙漠、沼澤、洞穴、雨林），魔王戰在城堡大廳
+- 魔王登場時切換成緊張的魔王戰配樂
 - 磚塊堆到頂端，勇者就會變成棺材
 
 ## 操作
@@ -30,6 +41,8 @@
 - `index.html`：完整遊戲，單一檔案，用瀏覽器打開就能玩
 - `tile-kiln.html`：遊戲本體（Claude Artifact 發布用的版本）
 - `build.sh`：由 `tile-kiln.html` 產生 `index.html`；改完遊戲後執行一次
+- `manifest.webmanifest`、`sw.js`、`icons/`：安裝成 App 與離線遊玩用
+- `tools/make_icons.py`：用勇者的像素圖產生 App 圖示
 - `角色總覽.html`：勇者、30 種怪物、11 種魔王、攻擊動作的像素圖總覽
 
 所有角色、怪物與場景皆為原創像素圖，音樂與音效以 Web Audio 即時合成。字型來自 Google Fonts（Noto Sans TC、Unbounded、JetBrains Mono、Press Start 2P、Yuji Boku）。
