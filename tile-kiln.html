@@ -510,7 +510,7 @@ const HERO_WALK = [
 const HERO_STRIKE = HERO_WALK[0].map((r, y) => y <= 16 ? [...r].map((ch, x) => x <= 3 && "wWyn".includes(ch) ? "." : ch).join("") : r);
 const SWORD_PIVOT = [3, 15];   // the sword hand, in sprite pixels (outline included)
 const BLADES = {   // blade colours per element of the current line clear
-  slash:   { core: "#ffffff", edge: "#a8b4c0", glow: null,      trail: "#ffffff", arc: ["#ffffff", "#c8e4f4", "#6a9ac0"] },
+  slash:   { core: "#ffffff", edge: "#9ae8c8", glow: "#d8fbec", trail: "#c8f6e2", arc: ["#ffffff", "#9ef0cc", "#2a9a78"] },
   fire:    { core: "#fff0a0", edge: "#f08a30", glow: "#e0403c", trail: "#f08a30", arc: ["#fff6c0", "#f08a30", "#b8301c"] },
   ice:     { core: "#ffffff", edge: "#7ac8f0", glow: "#bfe9ff", trail: "#7ae0ff", arc: ["#ffffff", "#9ae4ff", "#3a8ac0"] },
   thunder: { core: "#ffffff", edge: "#ffd400", glow: "#fff27a", trail: "#ffd400", arc: ["#ffffff", "#ffd400", "#b88a10"] },
@@ -965,7 +965,7 @@ const ELEMS = {
   thunder: { name: "雷電斬", ink: ["#ffd400", "#14245e"], lane: "#e0b000", cols: ["#ffffff", "#fff27a", "#ffd400"] },
   holy:    { name: "聖光斬", ink: ["#ffffff", "#5a6c9c"], lane: "#9ab0d8", cols: ["#ffffff", "#f4f8ff", "#c8d8f0"] },
   dark:    { name: "暗黑斬", ink: ["#a040f0", "#1a0630"], lane: "#7a3ab0", cols: ["#e0a0ff", "#9a3ae0", "#3a1060"] },
-  slash:   { name: "疾風斬", ink: ["#2a8a5a", "#06281a"], lane: "#5a6a7a", cols: ["#ffffff", "#d8e4ec", "#9aa8b8"] },
+  slash:   { name: "疾風斬", ink: ["#46dca6", "#0a4a3a"], lane: "#3ab88a", cols: ["#ffffff", "#c8f6e2", "#7ad8b0"] },
 };
 let clearElem = "slash";
 function pickElem(){ const k = Object.keys(ELEMS).filter(e => e !== clearElem); clearElem = k[Math.random() * k.length | 0]; }
@@ -1036,21 +1036,55 @@ function drawClearFx(ctx, w){
     ctx.globalAlpha = 1;
   });
 }
-function sfxElem(e){
+let whiteBuf = null;
+function white(a){   // smooth white noise (the crunchy NES noise is kept for landings and booms)
+  if (!whiteBuf) { whiteBuf = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = whiteBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  return whiteBuf;
+}
+function sfxElem(e){   // one signature sound per element, synthesised live
   const a = actx; if (!a || !soundOn) return;
-  const t = a.currentTime;
-  const hiss = (vol, dur, f) => {
-    const n = a.createBufferSource(), g = a.createGain(), bq = a.createBiquadFilter();
-    n.buffer = getNoise(a); bq.type = "bandpass"; bq.frequency.value = f;
-    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
-    n.connect(bq).connect(g).connect(a.destination); n.start(t); n.stop(t + dur + .02);
+  const t = a.currentTime, out = a.destination;
+  const noise = (start, dur, type, f0, f1, vol, q = 1, attack = .01) => {
+    const n = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain();
+    n.buffer = white(a); n.loop = true; fl.type = type; fl.Q.value = q;
+    fl.frequency.setValueAtTime(f0, t + start); fl.frequency.exponentialRampToValueAtTime(f1, t + start + dur);
+    g.gain.setValueAtTime(.0001, t + start); g.gain.exponentialRampToValueAtTime(vol, t + start + attack); g.gain.exponentialRampToValueAtTime(.0001, t + start + dur);
+    n.connect(fl).connect(g).connect(out); n.start(t + start); n.stop(t + start + dur + .05);
   };
-  if (e === "fire") hiss(.3, .35, 900);
-  else if (e === "thunder") { hiss(.4, .25, 2500); hiss(.25, .4, 300); }
-  else if (e === "slash") hiss(.25, .12, 4000);
-  else if (e === "dark") { hiss(.3, .45, 220); tone(N(50), 0, .25, "square", .07); tone(N(44), .14, .35, "square", .07); }
-  else if (e === "ice") [96, 100, 103].forEach((m, i) => tone(N(m), .02 + i * .04, .06, "triangle", .08));
-  else [79, 84, 88].forEach(m => tone(N(m), .02, .35, "triangle", .07));
+  const osc = (start, dur, type, f0, f1, vol, attack = .005) => {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t + start); o.frequency.exponentialRampToValueAtTime(f1, t + start + dur);
+    g.gain.setValueAtTime(.0001, t + start); g.gain.exponentialRampToValueAtTime(vol, t + start + attack); g.gain.exponentialRampToValueAtTime(.0001, t + start + dur);
+    o.connect(g).connect(out); o.start(t + start); o.stop(t + start + dur + .05);
+  };
+  if (e === "thunder") {        // electric buzz whose pitch jitters wildly, a sharp crack, then a low rumble
+    const o = a.createOscillator(), g = a.createGain(); o.type = "square";
+    for (let i = 0; i < 26; i++) o.frequency.setValueAtTime(150 + Math.random() * 1800, t + i * .014);
+    g.gain.setValueAtTime(.08, t); g.gain.setValueAtTime(.08, t + .3); g.gain.exponentialRampToValueAtTime(.0001, t + .38);
+    o.connect(g).connect(out); o.start(t); o.stop(t + .4);
+    noise(0, .12, "highpass", 3000, 1500, .35);
+    noise(.08, .9, "lowpass", 220, 60, .3, 1, .05);
+  } else if (e === "fire") {    // whoosh of flame catching, then crackling pops
+    noise(0, .55, "bandpass", 300, 1400, .35, .8, .08);
+    noise(.05, .7, "lowpass", 500, 150, .18, 1, .1);
+    for (let i = 0; i < 9; i++) noise(.1 + Math.random() * .55, .03, "highpass", 2500, 2000, .08 + Math.random() * .25);
+  } else if (e === "ice") {     // crystals snapping into place: rising glassy pings, a frosty hiss, a final crack
+    [0, .05, .09, .13, .16, .19].forEach((st, i) => osc(st, .18, "sine", 1800 + i * 380 + Math.random() * 200, 2600 + i * 400, .07));
+    noise(0, .35, "highpass", 6000, 9000, .07, 1, .05);
+    noise(.24, .08, "bandpass", 3500, 2500, .3, 3);
+  } else if (e === "holy") {    // a bright major chord swelling in, with a high bell shimmer on top
+    [60, 64, 67, 72].forEach(m => osc(0, .9, "triangle", N(m), N(m), .06, .12));
+    [84, 88, 91, 96].forEach((m, i) => osc(.06 + i * .07, .4, "sine", N(m), N(m), .05));
+  } else if (e === "dark") {    // a growl sliding down, a dissonant tritone drone, and a sucking swell
+    osc(0, .6, "sawtooth", 140, 45, .1, .02);
+    osc(0, .6, "square", N(42), N(36), .04);
+    osc(0, .6, "square", N(48), N(42), .035);
+    noise(0, .45, "lowpass", 200, 900, .25, 1, .4);
+  } else {                      // wind slash: a fast airy whoosh and a metallic shing
+    noise(0, .25, "bandpass", 4000, 700, .35, 1.2, .02);
+    osc(.02, .35, "sine", 2700, 2500, .06);
+    osc(.02, .3, "sine", 4100, 3900, .03);
+  }
 }
 
 /* ---------- landing & rotation effects ---------- */
@@ -1179,7 +1213,7 @@ function sfxClear(n){
   // rising C-major arpeggio; more rows = longer run, 4 rows ends with a sparkle
   const notes = [72, 76, 79, 84, 88, 91];
   const steps = 2 + n;
-  for (let i = 0; i < steps; i++) tone(N(notes[i]), i * .055, .075, "square", .09);
+  for (let i = 0; i < steps; i++) tone(N(notes[i]), i * .055, .075, "square", .045);   // quieter: the element sound leads
   if (n >= 4) { tone(N(96), steps * .055, .3, "square", .08); tone(N(84), steps * .055, .3, "triangle", .14); }
 }
 function sfxLevel(at = 0){

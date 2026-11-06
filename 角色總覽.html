@@ -108,7 +108,7 @@ const HERO_WALK = [
 const HERO_STRIKE = HERO_WALK[0].map((r, y) => y <= 16 ? [...r].map((ch, x) => x <= 3 && "wWyn".includes(ch) ? "." : ch).join("") : r);
 const SWORD_PIVOT = [3, 15];   // the sword hand, in sprite pixels (outline included)
 const BLADES = {   // blade colours per element of the current line clear
-  slash:   { core: "#ffffff", edge: "#a8b4c0", glow: null,      trail: "#ffffff", arc: ["#ffffff", "#c8e4f4", "#6a9ac0"] },
+  slash:   { core: "#ffffff", edge: "#9ae8c8", glow: "#d8fbec", trail: "#c8f6e2", arc: ["#ffffff", "#9ef0cc", "#2a9a78"] },
   fire:    { core: "#fff0a0", edge: "#f08a30", glow: "#e0403c", trail: "#f08a30", arc: ["#fff6c0", "#f08a30", "#b8301c"] },
   ice:     { core: "#ffffff", edge: "#7ac8f0", glow: "#bfe9ff", trail: "#7ae0ff", arc: ["#ffffff", "#9ae4ff", "#3a8ac0"] },
   thunder: { core: "#ffffff", edge: "#ffd400", glow: "#fff27a", trail: "#ffd400", arc: ["#ffffff", "#ffd400", "#b88a10"] },
