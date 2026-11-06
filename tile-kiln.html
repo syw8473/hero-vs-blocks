@@ -109,7 +109,7 @@ canvas{-webkit-tap-highlight-color:transparent}
   .pills button:active{transform:scale(.93);filter:brightness(1.3)}
   .touch{grid-area:ctrl;display:flex;justify-content:space-between;align-items:flex-start;width:100%;padding:0 6px;box-sizing:border-box}
   .dpad button,.hub{background:#2e4549}
-  .ab{margin-right:6px}
+  .ab{margin-right:6px;margin-top:calc(clamp(38px,min(14vw,6.2vh),56px) * .46)}   /* drop A/B so their middle lines up with the d-pad's centre */
   .ghost{white-space:nowrap;padding:6px 10px;font-size:12px}
   /* the battle scene fills the whole screen; panels, board and buttons sit on top of its ground */
   html{background:#0e2a2d} body{background:transparent} #worldbg{display:block}
@@ -838,15 +838,15 @@ function updateLane(dt){
     // sits right above the monster's head (kept inside the lane): [HP pips] name on a dark chip
     // boss HP = lines still to clear, shown as pips under the name: 5 per row, the 6th starts a new row
     const lw = Math.min(lx.measureText(label).width, W * .6), rows = foe.boss ? Math.ceil(foe.max / 5) : 0;
-    const cw = Math.max(lw, rows ? Math.min(5, foe.max) * 11 - 3 : 0) + 9, chH = 15 + rows * 9;
+    const cw = Math.max(lw, rows ? Math.min(5, foe.max) * 11 - 3 : 0) + 9, chH = (rows ? 19 : 15) + rows * 9;   // pips sit one step below the name
     const fb = foeBox || { x: W * 5 / 6, fw: 0, y: 20 };
     const x0 = Math.max(2, Math.min(W - cw - 2, fb.x + fb.fw / 2 - cw / 2)), y0 = Math.max(1, fb.y - chH - 3);
     lx.fillStyle = "rgba(20,16,28,.66)"; lx.beginPath(); lx.roundRect(x0, y0, cw, chH, 4); lx.fill();
     lx.textAlign = "center"; lx.fillStyle = foe.boss ? "#ffb08a" : "#f4efe4"; lx.fillText(label, x0 + cw / 2, y0 + 1, W * .6); lx.textAlign = "start";
+    const pipX = x0 + (cw - (Math.min(5, foe.max) * 11 - 3)) / 2;   // every row starts under the first pip (left-aligned)
     for (let i = 0; i < (foe.boss ? foe.max : 0); i++) {
-      const r = i / 5 | 0, inRow = Math.min(5, foe.max - r * 5), rowW = inRow * 11 - 3;
       lx.fillStyle = i < foe.hp ? "#ff5048" : "#5a5060";
-      lx.fillRect(Math.round(x0 + (cw - rowW) / 2 + (i % 5) * 11), y0 + 15 + r * 9, 8, 6);
+      lx.fillRect(Math.round(pipX + (i % 5) * 11), y0 + 19 + (i / 5 | 0) * 9, 8, 6);
     }
   }
   // now playing: shown in the chip under the board (hidden while music is off or before the first stage starts)
@@ -1026,6 +1026,186 @@ function backdrop(){
   }
   return bgCache.cv;
 }
+/* ---------- underground scenery (phones only, where the scene fills the whole screen below the horizon) ---------- */
+// small pixel sprites: each char is a palette key, "." is empty
+const UG_SPR = {
+  mole: ["...kkk...", ".kkkkkkk.", "kkekkkekk", "kkkkpkkkk", "hkkkkkkkh", ".hh...hh."],
+  rabbit: [".w...w.", ".w...w.", ".ww.ww.", "wwwwwww", "wewwwew", "wwwpwww", ".wwwww.", "ww...ww"],
+  acorn: [".aa.", "aaaa", "bbbb", ".bb."],
+  owl: [".O.O.", "ooooo", "ywoyw", "eoooe", ".ooo.", ".wow.", ".o.o."],
+  chest: [".YYYYYY.", "YnnnnnnY", "YYYyyYYY", "YnnyynnY", "YnnnnnnY", "YYYYYYYY"],
+  prisoner: [".sss.", ".ses.", "..s..", "wgwgw", "wgwgw", "wgwgw", ".g.g.", ".g.g.", "gg.gg"],
+  rexskull: [
+    "......bbbbbbbbbb........................",
+    "...bbbbbbbbbbb..bbbbbbbb................",
+    "..bbbbb...bbb....dbbbbbbbbbbb...........",
+    ".bbbbb.....bb....dbbbbbbbbbbdbbb........",
+    ".bbbbb.....bb....bdbbbb....bbddbbb......",
+    ".bbbbb.....bbb..bbdbbb......bbbddbbb....",
+    ".bbbbbb...bbbbbbbbdbbb......bbbbbdb.b...",
+    ".bbbbbbbbbbbbdddbbdbbbb....bbbbbbb...b..",
+    ".bbbbbbbbbbdddbbbbbdbbbbbbbbbbbbbbb.bbb.",
+    ".bbbbbbbbbbbbrrrbrbdbbbbbbbbbbbbbbbbbbs.",
+    "..bbbbbbbbbbbrbrbrbbbbbbbbbbbbbbbbbbbb..",
+    "...bbbbbssssssssssssssssssssssssssssss..",
+    "....bbbsmmmmmmmmmmmmmmmmmmmmmmmmmmmmm...",
+    ".bsssss.mmmmmtmtmtmtmtmtmtmtmtmtmtmt....",
+    ".sbbbbdbbmmmmtttmtmtmtmtmtmtmtmtmtmt....",
+    "..bbbdddbbbbmmttmtmmmtmtmmmtmtmmmtmt....",
+    "..bbbbdbbddbbbmmmtmmmmmtmmmmmtmmmmm.....",
+    "..sbbbbbbddbbbbbmmmmtmmtmmmmmmmmmmm.....",
+    "...sbbbbbbbbbbbbbbbmtmmtmmmmmmmmmmm.....",
+    "....sssbbbbbbrbrrbrrbmmtmmtmmtmmmmm.....",
+    ".......sssbbbbrrbrrbrbbmmmtmmtmmmmm.....",
+    "..........sssrrbrrbrrbbbbbmmmtmmmmm.....",
+    ".............sssrbrrbbbbbbbbmmmmtm......",
+    "................sssbrbbbbbbbbbmmtm......",
+    "...................sssbbbbbbbbbbbm......",
+    "......................sssbbbbbbbbbb.....",
+    ".........................ssbbbbbbbb.....",
+    "...........................sssbbbbb.....",
+    "..............................sssss.....",
+  ],
+  boat: ["......m...............", "......m...............", "nnnnnnmnnnnnnnnnnnnnnn", ".nNnNnNnNnNnNnNnNnNnn.", "..nnnnnnnnnnnnnnnnnn..", "....nnnnnnnnnnnnnn...."],
+  fishbone: ["b.b.b.b...", "bbbbbbbbbb", "b.b.b.b.bb"],
+  croc: ["...........K.K.K.K.K.....", "..KKkkkkkkkkkkkkkkkkkkk..", ".kkekkkkkkkkkkkkkkkkkkkkk", "kwkwkwkkkkkkkkkkkkkkkkkkkk", "kkkkkkkLLLLLLLLLLLLLLkkk.k", ".kk...kk.......kk......kk."],
+  cart: ["kk.kkkkk.kk", ".kccdcccdk.", ".kkkkkkkkk.", "..o.....o.."],
+  ammonite: ["..bbbb..", ".b....b.", "b..bb..b", "b.b..b.b", "b.b.b..b", "b..b..b.", ".b....b.", "..bbbb.."],
+};
+const UG_PAL = { k: "#5a4a48", e: "#1a1420", p: "#f490b0", h: "#e8a0a0", w: "#e8e0d8", a: "#8a5a2a", b: "#efe6cc",
+  Y: "#c08a1a", y: "#fcd83c", n: "#8a5a2a", s: "#f4c29a", g: "#5a5a66", m: "#6a4a2a", N: "#5a3a1a", c: "#9aa4ae", d: "#7ae0ff", o: "#3a3a44" };
+function paintUnderground(c, name, w, h, gy){
+  const hv = Math.min(h, Math.ceil(innerHeight / PX)), U = hv - gy; if (U < 40) return;   // lay things out against the visible bottom; desktop: ground is only a strip
+  const rnd = seeded(name.length * 977 + w), R = (x, y, ww, hh, col) => { c.fillStyle = col; c.fillRect(Math.round(x), Math.round(y), ww, hh); };
+  const spr = (key, x, y, pal) => UG_SPR[key].forEach((row, j) => [...row].forEach((ch, i) => { if (ch !== ".") R(x + i, y + j, 1, 1, (pal || UG_PAL)[ch] || UG_PAL[ch]); }));
+  const Y = f => gy + U * f;   // depth as a fraction of the underground
+  const strata = (soil, line, speck, from) => {
+    R(0, gy + from, w, h - gy - from, soil);
+    for (let k = 0; k < 7; k++) { const y0 = Y(.08 + k * .14); for (let x = 0; x < w; x++) R(x, y0 + Math.round(Math.sin(x * .12 + k) * 2), 1, 1, line); }
+    for (let i = 0; i < w * U / 30; i++) R(rnd() * w, gy + from + rnd() * (U - from), 1, 1, speck);
+  };
+  const tunnel = (pts, col) => {   // a 3-px wide burrow through the listed points
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+      for (let k = 0; k <= n; k++) R(x0 + (x1 - x0) * k / n - 1, y0 + (y1 - y0) * k / n - 1, 3, 3, col);
+    }
+  };
+  const den = (x, y, rw, rh, col) => { for (let dy = -rh; dy <= rh; dy++) for (let dx = -rw; dx <= rw; dx++) if ((dx * dx) / (rw * rw) + (dy * dy) / (rh * rh) <= 1) R(x + dx, y + dy, 1, 1, col); };
+  // burrows in the style of a prairie-dog warren: separate hollow dens, short sideways tunnels ending in dark holes, scattered stones
+  const hollow = (x, y, rw, rh, inner, shade, floor) => {   // a dug-out den: shadowed roof, lit floor
+    den(x, y, rw, rh, inner);
+    for (let dx = -rw + 1; dx < rw; dx++) { const t = Math.sqrt(Math.max(0, 1 - (dx * dx) / (rw * rw))); R(x + dx, y - Math.round(rh * t), 1, 1, shade); R(x + dx, y + Math.round(rh * t) - 1, 1, 1, floor); }
+  };
+  const burrow = (x0, y0, x1, y1, inner, shade) => {   // a short, thick tunnel with a dark hole at its far end
+    const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+    for (let k = 0; k <= n; k++) { const x = x0 + (x1 - x0) * k / n, y = y0 + (y1 - y0) * k / n; R(x - 2, y - 2, 5, 5, inner); R(x - 2, y - 3, 5, 1, shade); }
+    den(x1, y1, 3, 3, "#140c06");
+  };
+  const stone = (x, y, rw, rh) => { den(x, y, rw, rh, "#8a9090"); den(x - 1, y - 1, rw - 1, rh - 1, "#a8aeae"); R(x - rw + 2, y - rh + 1, 2, 1, "#d0d4d0"); for (let dx = -rw + 1; dx < rw - 1; dx++) R(x + dx, y + rh - 1, 1, 1, "#6a6e6e"); };
+  const warren = (soil, line, speck, inner, shade, floor, from) => {
+    strata(soil, line, speck, from);
+    [[6, Y(.42), 3, 2], [w - 8, Y(.68), 4, 3], [w * .5 - 4, Y(.73), 3, 2], [w * .3, Y(.99), 4, 2], [w - 22, Y(.97), 3, 2], [w * .22, Y(.15), 3, 2], [w * .78, Y(.2), 2, 2]].forEach(([x, y, a2, b2]) => stone(x, y, a2, b2));
+    // left and right side dens with their own tunnels, a pair at the bottom, one small den between the controls
+    hollow(13, Y(.53), 11, 6, inner, shade, floor); burrow(4, Y(.53) + 1, -2, Y(.47), inner, shade); burrow(22, Y(.55), 30, Y(.6), inner, shade);
+    hollow(w - 13, Y(.5), 11, 6, inner, shade, floor); burrow(w - 23, Y(.5), w - 31, Y(.44), inner, shade);
+    hollow(w * .5, Y(.8), 7, 4, inner, shade, floor); burrow(w * .5 + 6, Y(.8), w * .5 + 12, Y(.76), inner, shade);
+    hollow(w * .3, Y(.92), 12, 6, inner, shade, floor); burrow(w * .3 - 11, Y(.93), w * .3 - 20, Y(.9), inner, shade);
+    hollow(w * .72, Y(.91), 11, 6, inner, shade, floor); burrow(w * .72 + 10, Y(.9), w * .72 + 22, Y(.95), inner, shade); burrow(w * .5, Y(.97), w * .5 - 6, Y(.99), inner, shade);
+  };
+  if (name === "草原") {   // moles in their dens and a family of burrowing owls
+    warren("#8a6440", "#7a5634", "#a88058", "#5e4228", "#3e2a18", "#9a7450", 4);
+    spr("mole", 9, Y(.53) - 2); spr("mole", w * .3 - 4, Y(.92) - 2); spr("mole", w * .72 - 4, Y(.91) - 2);
+    const OWL = { o: "#b08a5a", O: "#7a5a34", y: "#fcd83c", e: "#1a1420", w: "#e8dcc0" };
+    [w - 19, w - 13, w - 8].forEach((x, i) => spr("owl", x, Y(.5) - 4 + (i === 1 ? -1 : 0), OWL));
+  } else if (name === "森林") {   // rabbits in their burrows under the tree roots, with a stash of acorns
+    warren("#5a3e26", "#4a321e", "#7a5a3a", "#3a2614", "#24160a", "#6a4a2e", 3);
+    for (let i = 0; i < 9; i++) { const x0 = 4 + i * w / 9; let x = x0; for (let y = gy + 2; y < Y(.22 + (i % 3) * .05); y++) { x += (rnd() - .5) * 1.2; R(x, y, 1, 1, "#2e1e10"); if (rnd() < .08) R(x + 1, y, 2, 1, "#2e1e10"); } }   // tree roots
+    spr("rabbit", 9, Y(.53) - 5); spr("rabbit", w - 17, Y(.5) - 5); spr("rabbit", w * .3 - 3, Y(.92) - 5);
+    spr("acorn", w * .72 - 7, Y(.91)); spr("acorn", w * .72 - 2, Y(.91) + 1); spr("acorn", w * .72 + 3, Y(.91)); spr("acorn", w * .5 - 2, Y(.8));
+  } else if (name === "沙漠") {
+    strata("#c89048", "#b07a38", "#e0b060", 3);
+    for (let k = 0; k < 4; k++) R(0, Y(.2 + k * .2), w, 1, "#d8a858");
+    const fossilPal = { ...UG_PAL, b: "#efe6cc" };
+    spr("rexskull", w * .5 - 20, hv - 31, { b: "#d8c8a0", s: "#a08860", d: "#5a4630", r: "#b88a64", t: "#f4ecd8", m: "#24180c" });   // a T. rex skull, jaws gaping
+    spr("ammonite", 6, Y(.5), fossilPal); spr("ammonite", w - 14, Y(.56), fossilPal);
+    R(w * .5 - 2, Y(.7), 5, 1, "#efe6cc"); R(w * .5 - 3, Y(.7) - 1, 1, 3, "#efe6cc"); R(w * .5 + 3, Y(.7) - 1, 1, 3, "#efe6cc");   // a stray bone
+  } else if (name === "鄉鎮") {
+    strata("#7a6048", "#6a5040", "#9a8068", 3);
+    const pit = "#3a2c20";
+    [[10, Y(.52)], [w - 11, Y(.58)], [w * .32, Y(.92)], [w * .68, Y(.9)]].forEach(([x, y]) => { den(x, y, 8, 5, pit); spr("chest", x - 4, y - 3); });
+    for (let i = 0; i < 18; i++) { const x = w * .5 + (rnd() - .5) * 18, y = Y(.94) + rnd() * 3; R(x, y, 1, 1, "#fcd83c"); }   // spilled coins
+  } else if (name === "沼澤") {    // murky mud with rising bubbles, a sunken boat and old fish bones
+    strata("#3e5240", "#344836", "#5a6e50", 3);
+    for (let i = 0; i < 26; i++) { const x = rnd() * w, y = Y(.1 + rnd() * .85); R(x, y, 1, 1, "#8aa888"); if (rnd() < .4) R(x + 1, y - 2, 1, 1, "#a8c4a0"); }
+    spr("boat", w * .5 - 11, Y(.9));
+    spr("fishbone", 5, Y(.52), { b: "#d8dcc8" }); spr("fishbone", w - 15, Y(.6), { b: "#d8dcc8" });
+    spr("croc", Math.min(w - 27, w * .5 + 13), Y(.94), { k: "#4a6a3a", K: "#2e4a24", L: "#8aa060", e: "#fcd83c", w: "#ffffff" });   // a crocodile lurking by the wreck
+    spr("croc", 2, Y(.75), { k: "#4a6a3a", K: "#2e4a24", L: "#8aa060", e: "#fcd83c", w: "#ffffff" });
+  } else if (name === "洞穴") {     // an underground lake, a mine-cart track, and glowing crystal clusters
+    strata("#3a3038", "#2e262e", "#4e424c", 2);
+    R(0, Y(.86), w, h - Y(.86), "#1e3a5a"); for (let i = 0; i < w / 4; i++) R(rnd() * w, Y(.86) + 1 + rnd() * (U * .14), 3, 1, "#3a6a9a");   // lake
+    const ry = Y(.62); R(0, ry, w, 1, "#7a6a5a"); for (let x = 0; x < w; x += 4) R(x, ry + 1, 2, 1, "#5a4a3a");          // rails + sleepers
+    spr("cart", w * .5 - 5, ry - 4);
+    // crystal deposits set into the rock: clusters of pointed crystals in cyan, violet and rose, each with a dark socket and a bright edge
+    const CRY = [["#7ae0ff", "#d8faff", "#2a7aa0"], ["#b080ff", "#e8d8ff", "#5a3a9a"], ["#ff8ac8", "#ffd8ec", "#a03a70"]];
+    const deposit = (x, y, size, hue) => {
+      den(x, y + 1, size + 2, 3, "#1e181e");   // socket in the rock
+      for (let k = -2; k <= 2; k++) {
+        const [mid, lit, dk] = CRY[(hue + Math.abs(k)) % 3], hh = Math.round(size * (1.4 - Math.abs(k) * .3)), cx2 = x + k * 2, lean = k * .25;
+        for (let j = 0; j < hh; j++) { const ww = j > hh - 3 ? 1 : 2; R(cx2 + lean * j, y - j, ww, 1, mid); R(cx2 + lean * j, y - j, 1, 1, j > hh - 3 ? lit : (j % 3 ? mid : lit)); }
+        R(cx2 + 1, y, 1, 1, dk);
+      }
+      for (let i = 0; i < 4; i++) R(x + (rnd() - .5) * size * 3, y - rnd() * size * 1.6, 1, 1, "#ffffff");   // glints
+    };
+    [[9, Y(.5), 6, 0], [w - 10, Y(.48), 6, 1], [w * .5, Y(.76), 4, 2], [6, Y(.8), 4, 1], [w - 7, Y(.8), 4, 2], [w * .28, Y(.35), 3, 0], [w * .72, Y(.33), 3, 2]].forEach(([x, y, sz, hue]) => deposit(x, y, sz, hue));
+  } else if (name === "雨林") {     // buried temple ruins with a golden idol and a coiled snake
+    strata("#3a4a2a", "#2e3e20", "#5a6a3a", 3);
+    for (let i = 0; i < 9; i++) { const x0 = 4 + i * w / 9; let x = x0; for (let y = gy + 2; y < Y(.25); y++) { x += (rnd() - .5); R(x, y, 1, 1, "#2a3a1a"); } }   // roots
+    const block = (x, y) => { R(x, y, 9, 6, "#8a8a72"); R(x, y, 9, 1, "#a8a890"); R(x + 2, y + 2, 5, 1, "#6a6a56"); R(x + 4, y + 1, 1, 4, "#6a6a56"); };   // carved stone
+    [[2, Y(.46)], [11, Y(.46)], [2, Y(.46) + 6], [w - 20, Y(.5)], [w - 11, Y(.5)], [w - 11, Y(.5) + 6]].forEach(([x, y]) => block(x, y));
+    // a buried Maya step pyramid: five limestone tiers with jade / red-ochre glyph friezes, a central stair,
+    // a shrine on top with a glowing doorway and roof comb, and feathered-serpent heads guarding the foot of the stair
+    const LIME = "#c8b890", LIT = "#e0d4ac", SHD = "#8a7a58", MOSS = "#5a7a3a", JADE = "#3aa08a", OCHRE = "#b04a2a";
+    const pw = Math.min(w - 8, 76), th = 5, tiers = 5, px0 = w / 2, by = h - 1;
+    den(px0, by - 12, pw / 2 + 6, 22, "#1a2210");   // the cavity it sits in
+    for (let k = 0; k < tiers; k++) {
+      const tw = pw - k * 12, x0 = px0 - tw / 2, y0 = by - (k + 1) * th;
+      R(x0, y0, tw, th, LIME); R(x0, y0, tw, 1, LIT); R(x0, y0 + th - 1, tw, 1, SHD); R(x0 + tw - 1, y0, 1, th, SHD);
+      for (let x = x0 + 2, n = 0; x < x0 + tw - 3; x += 4, n++) { R(x, y0 + 2, 2, 2, n % 2 ? JADE : OCHRE); R(x + 1, y0 + 2, 1, 1, LIT); }   // glyph frieze
+      for (let i = 0; i < tw / 6; i++) R(x0 + rnd() * tw, y0 + rnd() * th, 1, 1, MOSS);   // moss
+    }
+    const sw = 10, topY = by - tiers * th;
+    R(px0 - sw / 2, topY, sw, tiers * th, "#b0a078");                                       // central stair
+    for (let y = topY + 1; y < by; y += 2) R(px0 - sw / 2, y, sw, 1, SHD);
+    R(px0 - sw / 2 - 1, topY, 1, tiers * th, OCHRE); R(px0 + sw / 2, topY, 1, tiers * th, OCHRE);   // balustrades
+    const sx = px0 - 9, sy = topY - 9;                                                      // shrine on top
+    R(sx, sy, 18, 9, LIME); R(sx, sy, 18, 1, LIT); R(sx + 17, sy, 1, 9, SHD);
+    R(px0 - 3, sy + 3, 6, 6, "#120c06"); R(px0 - 1, sy + 5, 2, 3, "#fcd83c"); R(px0 - 2, sy + 4, 4, 1, "#c08a1a");   // doorway with a golden glow
+    R(sx + 2, sy + 1, 3, 2, JADE); R(sx + 13, sy + 1, 3, 2, JADE);
+    R(px0 - 6, sy - 5, 12, 5, OCHRE); for (let x = px0 - 5; x < px0 + 5; x += 2) R(x, sy - 4, 1, 3, "#7a2a14");   // roof comb
+    R(px0 - 7, sy - 1, 14, 1, "#7a2a14");
+    [[px0 - sw / 2 - 7, -1], [px0 + sw / 2 + 2, 1]].forEach(([hx, dir]) => {   // feathered-serpent heads at the foot of the stair
+      R(hx, by - 5, 6, 4, JADE); R(hx, by - 6, 6, 1, "#5ac0a8"); R(hx + (dir < 0 ? 1 : 3), by - 4, 2, 1, "#fcd83c");
+      R(hx + (dir < 0 ? -2 : 6), by - 3, 2, 1, OCHRE); R(hx + (dir < 0 ? -3 : 8), by - 4, 1, 1, OCHRE); R(hx + (dir < 0 ? -3 : 8), by - 2, 1, 1, OCHRE);
+      R(hx + 1, by - 1, 4, 1, "#fff6c0");   // fangs
+    });
+  } else if (name === "城堡") {
+    R(0, gy + 3, w, h - gy - 3, "#24202c");   // dungeon stonework under the carpet
+    for (let y = gy + 3; y < h; y += 4) for (let x = ((y / 4 | 0) % 2) * 4 - 4; x < w; x += 8) R(x, y, 7, 3, "#2e2a38");
+    const cell = (x, y) => {   // a barred cell with a prisoner
+      R(x, y, 18, 14, "#120e18");
+      spr("prisoner", x + 7, y + 4);
+      for (let bx = x; bx <= x + 17; bx += 3) R(bx, y, 1, 14, "#9aa0aa");
+      R(x, y, 18, 1, "#7a808a"); R(x, y + 13, 18, 1, "#7a808a");
+    };
+    cell(2, Y(.45)); cell(w - 20, Y(.45)); cell(w * .5 - 30, Y(.86)); cell(w * .5 + 12, Y(.86));
+    const bx = w * .5 - 3, by = Y(.9) + 6;   // ball and chain between the cells
+    for (let k = 0; k < 6; k++) R(bx - 6 + k, by - (k % 2), 1, 1, "#7a808a");
+    den(bx + 2, by + 1, 2, 2, "#3a3a44");
+    [[w * .25, Y(.3)], [w * .75, Y(.3)]].forEach(([x, y]) => { R(x, y, 1, 3, "#7a4a24"); R(x - 1, y - 3, 3, 3, "#f08a30"); R(x, y - 4, 1, 2, "#fcd83c"); });   // wall torches
+  }
+}
+
 function paintScene(c, name, w, h, gy){   // drawn at 1 px = 1 game pixel, then scaled up
   const rnd = seeded([...name].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7));
   const R = (x, y, ww, hh, col) => { c.fillStyle = col; c.fillRect(Math.round(x), Math.round(y), ww, hh); };
@@ -1105,6 +1285,7 @@ function paintScene(c, name, w, h, gy){   // drawn at 1 px = 1 game pixel, then 
     }
     R(0, gy, w, 1, "#e0b040"); R(0, gy + 1, w, 1, "#8a5a10"); R(0, gy + 2, w, 1, "#c08a1a");
   }
+  paintUnderground(c, name, w, h, gy);   // phones: scenery under the horizon
 }
 
 /* ---------- pause screen: night sky, moon, the hero resting by a campfire with fish and meat roasting on skewers ---------- */

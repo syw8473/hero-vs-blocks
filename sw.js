@@ -1,6 +1,6 @@
 // Offline support: the game files are stored on the device on first visit,
 // Google Fonts are cached as they load, so the game opens with no network afterwards.
-const VERSION = "hero-vs-blocks-v19";   // bump on every release so phones pick up the new game
+const VERSION = "hero-vs-blocks-v20";   // bump on every release so phones pick up the new game
 const CORE = ["./", "./index.html", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/maskable-512.png", "./icons/apple-touch-icon.png"];
 
