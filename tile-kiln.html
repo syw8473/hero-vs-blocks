@@ -605,9 +605,9 @@ function drawSword(ctx, ox, oy, px, deg, elem, ghost){
 // regions of HERO_ROWS (22×25): sword = cols 0–3 rows 0–16, shield = cols ≥14 rows 13–20, circlet = rows 5–6,
 // torso = a/A, belt = row 18 y/Y, pants = k on rows ≥19, boots = n/b/B on rows ≥22, cape = c/C
 const TIERS = [   // colours follow Sungyi's five illustrations
-  { name: "見習勇者", gear: "兜襠布・木棍", lv: 1, cape: false, shield: false, circlet: "hair", belt: "rope", pants: "skin", boots: "skin",
+  { name: "見習勇者", gear: "兜襠布・木棍＋木板", lv: 1, cape: false, shield: "plank", circlet: "hair", belt: "rope", pants: "skin", boots: "skin",
     weapon: { kind: "stick", L: 9, core: "#a8743e", edge: "#6a4420", guard: null },
-    pal: { L: "#7a7870", M: "#54524c" } },
+    pal: { L: "#7a7870", M: "#54524c", D: "#b8844a", E: "#8a5a2e" } },
   { name: "旅人勇者", gear: "布衣・木劍＋小圓木盾", lv: 2, cape: true, shield: "small", circlet: "hair", belt: "rope", pants: "cloth", boots: "own",
     weapon: { kind: "wood", L: 11, core: "#d0a878", edge: "#946c44", guard: "#6a4420" },
     pal: { a: "#6e8070", A: "#46564a", y: "#5a3618", D: "#a8743e", E: "#6a4420", c: "#5e4c40", C: "#3a2e26", m: "#7a6c56", b: "#b09468", B: "#6e5a3a" } },
@@ -638,6 +638,10 @@ function tierRows(rows, T){
     }
     if (shield) {
       if (!T.shield) return (x === 14 && (y === 15 || y === 16)) ? "s" : ".";
+      if (T.shield === "plank") {   // just a scrap board held up as a shield: two planks with a dark seam
+        const hand = x === 14 && (y === 15 || y === 16);
+        return x >= 15 && x <= 18 && y >= 14 && y <= 20 ? (x === 16 || (y === 17 && x === 18) ? "E" : "D") : hand ? "s" : ".";
+      }
       if (T.shield === "small") {   // a little round buckler: rim, plank face, iron boss in the middle
         const d = Math.hypot(x - 17, y - 16.5);
         return d > 2.7 ? ((x === 14 && (y === 15 || y === 16)) ? "s" : ".") : d > 1.9 ? "y" : d < .8 ? "E" : "D";
