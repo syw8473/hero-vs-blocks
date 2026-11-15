@@ -1101,7 +1101,7 @@ let cutIn = null;
 function startCutIn(tag){ cutIn = { e: clearElem, t: 0, dur: 900, tag }; ultFx = null; sfxCutIn(); }
 function drawCutInLayer(dt){
   const cv = $("cutin");
-  if (!cutIn) { if (cv.dataset.on) { cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); delete cv.dataset.on; } return; }
+  if (!cutIn) { if (cv.dataset.on) { const c0 = cv.getContext("2d"); c0.setTransform(1, 0, 0, 1, 0, 0); c0.clearRect(0, 0, cv.width, cv.height); delete cv.dataset.on; } return; }   // reset the offset first so the whole screen is wiped
   cutIn.t += dt;
   const vw = innerWidth, vh = innerHeight;
   if (cv.width !== Math.round(vw * dpr) || cv.height !== Math.round(vh * dpr)) { cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr); cv.style.width = vw + "px"; cv.style.height = vh + "px"; }
