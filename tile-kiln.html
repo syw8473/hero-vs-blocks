@@ -958,6 +958,14 @@ function updateLane(dt){
     p.vy += 220 * s; p.x += p.vx * s; p.y += p.vy * s;
     lx.fillStyle = p.c; lx.fillRect(Math.round(p.x / PX) * PX, Math.round(p.y / PX) * PX, PX * 2, PX * 2);
   });
+  // hero class: a gold name chip over the hero's home spot (stays put while he lunges)
+  if (!hero.down) {
+    lx.textBaseline = "top"; lx.font = '700 11px "Noto Sans TC", system-ui, sans-serif';
+    const label = TIERS[heroTier].name, cw = lx.measureText(label).width + 9, chH = 15;
+    const x0 = Math.max(2, Math.min(W - cw - 2, homeX + hw / 2 - cw / 2)), y0 = Math.max(1, floor - hh - chH - 3);
+    lx.fillStyle = "rgba(20,16,28,.66)"; lx.beginPath(); lx.roundRect(x0, y0, cw, chH, 4); lx.fill();
+    lx.textAlign = "center"; lx.fillStyle = "#fcd83c"; lx.fillText(label, x0 + cw / 2, y0 + 1); lx.textAlign = "start";
+  }
   // monster name + boss HP
   if (foe) {
     lx.textBaseline = "top"; lx.font = '700 11px "Noto Sans TC", system-ui, sans-serif';
@@ -1052,7 +1060,7 @@ function drawCutIn(ctx, W, H, elem, T, face, p, tag){
   // the tier's illustration fills the band (hero sits on the right of every picture); it drifts slowly left while held
   if (face) {
   const iw = W * 1.04, ih = iw * face.height / face.width;
-  const imgX = Math.round(W - iw + W * .35 * (1 - ease(inP)) - p * 14 - W * 1.2 * outP * outP), imgY = Math.round(cy - ih * .5);
+  const imgX = Math.round(W - iw + 18 + W * .35 * (1 - ease(inP)) - p * 14 - W * 1.2 * outP * outP), imgY = Math.round(cy - ih * .5);
   ctx.imageSmoothingEnabled = true; ctx.drawImage(face, imgX, imgY, iw, ih);
   }
   // element wash from the left so the move name reads and the element shows
@@ -1070,7 +1078,7 @@ function drawCutIn(ctx, W, H, elem, T, face, p, tag){
   const nameIn = Math.min(1, Math.max(0, (p - .1) / .14));
   if (nameIn > 0) {
     const fsz = Math.round(Math.min(H * .26, W * .11) * ([...U.name].length <= 2 ? 1.35 : 1)), sc = nameIn < 1 ? 1.6 - .6 * ease(nameIn) : 1;
-    const ch = [...U.name], lines = ch.length <= 2 ? [[U.name + "！", W * .2, cy - bh * .2]] : [[ch.slice(0, 2).join(""), W * .14, cy - bh * .28], [ch.slice(2).join("") + "！", W * .24, cy - bh * .28 + fsz * 1.02]];
+    const ch = [...U.name], lines = ch.length <= 2 ? [[U.name + "！", W * .27, cy - bh * .2]] : [[ch.slice(0, 2).join(""), W * .14, cy - bh * .28], [ch.slice(2).join("") + "！", W * .24, cy - bh * .28 + fsz * 1.02]];
     ctx.save(); ctx.globalAlpha = nameIn * (1 - outP); ctx.translate(-W * 1.2 * outP * outP, 0);
     ctx.font = `${fsz}px "Yuji Boku", "Noto Sans TC", serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
     const fat = fsz * .05, depth = Math.max(4, fsz / 9 | 0);
