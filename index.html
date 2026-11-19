@@ -212,7 +212,8 @@ const COLS = 10, ROWS = 20;
 // Glazes: celadon, cobalt, persimmon, mustard, plum, iron-red, sky
 const GLAZE = {
   I:["#7fc4c9","#4d9aa1"], O:["#e3b443","#b4851c"], T:["#9a5a8c","#6c3a62"],
-  S:["#93c6a4","#5f9a74"], Z:["#c4523a","#8f3624"], J:["#3f6db5","#284b85"], L:["#e58449","#b4592a"]
+  S:["#93c6a4","#5f9a74"], Z:["#c4523a","#8f3624"], J:["#3f6db5","#284b85"], L:["#e58449","#b4592a"],
+  G:["#8e9298","#4e5258"]   // garbage rows pushed up by monster attacks
 };
 const SHAPES = {
   I:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
@@ -364,6 +365,46 @@ function armorSave(){
 }
 function advance(){ spawn(queue.shift()); queue.push(nextFromBag()); drawSide(); }
 
+/* ---------- monster attacks: a countdown over each monster; when it runs out, garbage rises from the bottom ---------- */
+let purgePending = false, guardFx = null;
+// normal monsters every ~12 s, bosses every ~8 s, both a little quicker each stage
+const attackMs = boss => boss ? Math.max(4500, 8000 * Math.pow(.95, level - 1)) : Math.max(6500, 12000 * Math.pow(.95, level - 1));
+const GUARD_CHANCE = [0, 0, 0, .25, .4];   // silver and legendary gear can block a hit outright
+function tickAttack(dt){
+  if (!foe || foe.atkT == null || foe.die > 0 || foe.enter > 0 || clearing || !cur) return;
+  foe.atkT -= dt;
+  if (foe.atkT > 0) return;
+  foe.atkT = foe.atkMax; foe.lunge = 420;
+  if (Math.random() < GUARD_CHANCE[heroTier]) { guardFx = { t: 420 }; laneMsg = { text: "擋下！", t: 1000 }; sfxBlock(); return; }
+  hero.hurt = 420; sfxHurt();
+  addGarbage(heroTier >= 2 ? 1 : 2);
+}
+function addGarbage(n){
+  const hole = Math.random() * COLS | 0;   // one gap shared by the rows of a single attack
+  for (let i = 0; i < n; i++) {
+    if (grid[0].some(Boolean)) { if (armorSave()) continue; gameOver(); return; }   // pushed over the top
+    grid.shift(); grid.push(Array.from({ length: COLS }, (_, c) => c === hole ? null : "G"));
+  }
+  if (cur) { let k = 0; while (collide(cur.m, cur.x, cur.y) && k++ < n + 2) cur.y--; if (collide(cur.m, cur.x, cur.y)) { gameOver(); return; } }
+  for (let r = ROWS - n; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c]) for (let j = 0; j < 2; j++)
+    parts.push({ x: (c + Math.random()) * cell, y: (r + Math.random()) * cell, vx: (Math.random() - .5) * cell * 3, vy: -cell * (2 + Math.random() * 3), g: cell * 10, life: 300 + Math.random() * 200, c: Math.random() < .5 ? "#8e9298" : "#ff6a50", sz: Math.max(3, cell / 6 | 0) });
+  hitBanner = { text: `受到攻擊！+${n}`, t: 1300 };
+  if (!calm()) shakeT = 300;
+}
+// a T-spin or four-line ultimate clears every garbage row in one go
+function purgeGarbage(){
+  const gone = [];
+  grid.forEach((row, r) => { if (row.includes("G")) gone.push(r); });
+  if (!gone.length) return;
+  gone.forEach(r => { for (let c = 0; c < COLS; c++) for (let j = 0; j < 3; j++)
+    parts.push({ x: (c + Math.random()) * cell, y: (r + Math.random()) * cell, vx: (Math.random() - .5) * cell * 2, vy: -cell * (2 + Math.random() * 4), g: -cell * 1.5, life: 500 + Math.random() * 400, c: ["#ffffff", "#fff2a0", "#fcd83c"][j], sz: Math.max(3, cell / 6 | 0) });
+    flashes.push({ cells: Array.from({ length: COLS }, (_, c) => [c, r]), t: 260, max: 260, col: "#ffffff" }); });
+  grid = grid.filter((_, r) => !gone.includes(r));
+  while (grid.length < ROWS) grid.unshift(Array(COLS).fill(null));
+  purgeBanner = { text: "淨化！", t: 1600 }; hitBanner = null;
+  sfxPurge();
+}
+
 function gameOver(){
   state = "over"; cur = cur || null;
   mMode = "title"; gameOverJingle();
@@ -380,7 +421,7 @@ function showOverlay(t, p, btn){
 function reset(){
   grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   bag = []; queue = [nextFromBag(), nextFromBag(), nextFromBag()];
-  holdType = null; canHold = true; score = 0; lines = 0; level = 1; setTier(0); armorUsed = false; cutIn = null;
+  holdType = null; canHold = true; score = 0; lines = 0; level = 1; setTier(0); armorUsed = false; cutIn = null; purgePending = false;
   dropAcc = 0; clearing = null; state = "play"; mStep = 0; trackLv = 0; sceneLv = 0;
   resetBattle();
   $("overlay").hidden = true;
@@ -832,6 +873,7 @@ function spawnFoe(){
   const spr = foeSprite(def, pal);
   foe = { name: prefix + def[0], boss, hp: boss ? remain : 1, max: boss ? remain : 1, spr, white: whiteOf(spr), pal, enter: 1, hit: 0, die: 0, t: 0 };
   if (boss && state === "play") { laneMsg = { text: "魔王出現！", t: 1300 }; sfxBoss(); }
+  foe.atkMax = foe.atkT = attackMs(boss);
 }
 // clearing n lines chains n strokes; the whole combo lasts 0.4 / 0.6 / 0.8 / 1.0 s, so each stroke gets quicker as the combo grows
 const comboMs = n => 400 + 200 * (n - 1);
@@ -841,6 +883,7 @@ function battleHit(n, leveled){
   // special-move name in a burst bubble, shown in the left third while the hero is over at the monster, for the whole combo
   laneMsg = { text: ELEMS[clearElem].name, ink: ELEMS[clearElem].ink, sub: n > 1 ? `×${n}` : "", bubble: true,
     t: Math.max(420, hero.combo * .85 - 90), delay: 90, age: 0, seed: Math.random() * 1e9 | 0 };
+  if (foe && foe.atkT != null) { if (foe.atkT < 2500 && foe.die <= 0) guardFx = { t: 420 }; foe.atkT = foe.atkMax; }
   if (!foe || foe.die > 0) return;
   foe.hpTarget = (leveled || !foe.boss) ? 0 : Math.max(0, stageEnd(level) - lines);
   foe.hitsLeft = n;   // HP drops one pip per stroke; the monster falls on the last stroke
@@ -894,7 +937,7 @@ function drawBurst(m, W, H){
   lx.textAlign = "start";
 }
 let lastMob = -1, lastBoss = -1, seenBosses = new Set(), ultFx = null;
-function resetBattle(){ foe = null; nextFoeT = 0; kills = 0; lvKills = 0; laneMsg = null; laneParts = []; hero.down = false; hero.atk = 0; ultFx = null; lastMob = -1; lastBoss = -1; seenBosses.clear(); }
+function resetBattle(){ foe = null; nextFoeT = 0; kills = 0; lvKills = 0; laneMsg = null; laneParts = []; hero.down = false; hero.atk = 0; hero.hurt = 0; guardFx = null; ultFx = null; lastMob = -1; lastBoss = -1; seenBosses.clear(); }
 
 function updateLane(dt){
   const W = laneW, H = laneH, s = dt / 1000, floor = H - 6;
@@ -911,6 +954,7 @@ function updateLane(dt){
     const homeFoe = Math.min(W - fw - 4, Math.round((W * 5 / 6 - fw / 2) / PX) * PX);   // centre of the right third
     let x = homeFoe + Math.round(foe.enter * (W - homeFoe + 8));
     if (foe.hit > 0) x += Math.round((foe.hit / 280) * 3) * PX;   // knock-back
+    if (foe.lunge > 0) { foe.lunge -= dt; x -= Math.round(Math.sin(Math.PI * Math.max(0, foe.lunge) / 420) * W * .28 / PX) * PX; }   // pounces at the hero
     const y = floor - fh - ((foe.t / 320 | 0) % 2 ? PX : 0);
     foeBox = { x, y, fw, fh };
     if (foe.die > 0) {
@@ -957,7 +1001,20 @@ function updateLane(dt){
         }
       }
     } else if (foe && foe.pendingKill) { foe.pendingKill = false; foe.hp = foe.hpTarget; foe.die = 650; }   // safety: never leave a kill hanging
-    if (spr) lx.drawImage(spr, hx, hy, hw, hh);
+    if (hero.hurt > 0) { hero.hurt -= dt; hx -= Math.round(Math.min(1, hero.hurt / 200) * 3) * PX; }   // knocked back by a monster hit
+    if (spr && !(hero.hurt > 0 && (hero.hurt / 70 | 0) % 2)) lx.drawImage(spr, hx, hy, hw, hh);
+    if (guardFx) {   // shield glint: a pixel arc of light in front of the hero
+      guardFx.t -= dt;
+      if (guardFx.t <= 0) guardFx = null;
+      else {
+        const k = guardFx.t / 420, cx = hx + hw + PX, cy = hy + hh * .55, R = hh * .45;
+        lx.globalAlpha = Math.min(1, k * 1.6);
+        for (let a = -70; a <= 70; a += 10) { const r = a * Math.PI / 180;
+          lx.fillStyle = Math.abs(a) < 30 ? "#ffffff" : "#fcd83c";
+          lx.fillRect(Math.round((cx + Math.cos(r) * R * .5) / PX) * PX, Math.round((cy + Math.sin(r) * R) / PX) * PX, PX * 2, PX * 2); }
+        lx.globalAlpha = 1;
+      }
+    }
   }
   // T-spin ultimate: plays for 1.3 s over the monster (keeps its last spot if the monster falls mid-effect)
   if (ultFx) {
@@ -988,7 +1045,7 @@ function updateLane(dt){
     // sits right above the monster's head (kept inside the lane): [HP pips] name on a dark chip
     // boss HP = lines still to clear, shown as pips under the name: 5 per row, the 6th starts a new row
     const lw = Math.min(lx.measureText(label).width, W * .6), rows = foe.boss ? Math.ceil(foe.max / 5) : 0;
-    const cw = Math.max(lw, rows ? Math.min(5, foe.max) * 11 - 3 : 0) + 9, chH = (rows ? 19 : 15) + rows * 9;   // pips sit one step below the name
+    const cw = Math.max(lw, rows ? Math.min(5, foe.max) * 11 - 3 : 0) + 9, chH = (rows ? 19 : 15) + rows * 9 + 6;   // pips sit one step below the name; the attack timer runs along the bottom
     const fb = foeBox || { x: W * 5 / 6, fw: 0, y: 20 };
     const x0 = Math.max(2, Math.min(W - cw - 2, fb.x + fb.fw / 2 - cw / 2)), y0 = Math.max(1, fb.y - chH - 3);
     lx.fillStyle = "rgba(20,16,28,.66)"; lx.beginPath(); lx.roundRect(x0, y0, cw, chH, 4); lx.fill();
@@ -997,6 +1054,13 @@ function updateLane(dt){
     for (let i = 0; i < (foe.boss ? foe.max : 0); i++) {
       lx.fillStyle = i < foe.hp ? "#ff5048" : "#5a5060";
       lx.fillRect(Math.round(pipX + (i % 5) * 11), y0 + 19 + (i / 5 | 0) * 9, 8, 6);
+    }
+    if (foe.atkT != null && foe.die <= 0) {   // attack countdown: drains left to right, turns red and blinks near the end
+      const f = Math.max(0, foe.atkT / foe.atkMax), bw = cw - 8, by = y0 + chH - 5;
+      lx.fillStyle = "#2a2430"; lx.fillRect(Math.round(x0 + 4), by, Math.round(bw), 3);
+      const warn = foe.atkT < 2000;
+      lx.fillStyle = warn ? ((hero.t / 110 | 0) % 2 ? "#ff3a30" : "#ffd0a0") : f < .5 ? "#fcb43c" : "#7ad85a";
+      lx.fillRect(Math.round(x0 + 4), by, Math.round(bw * f), 3);
     }
   }
   // now playing: shown in the chip under the board (hidden while music is off or before the first stage starts)
@@ -1120,7 +1184,7 @@ function drawCutIn(ctx, W, H, elem, T, face, p, tag){
 }
 const HERO_ART = [1, 2, 3, 4, 5].map(n => { const im = new Image(); im.src = `art/hero${n}.jpg`; return im; });
 let cutIn = null;
-function startCutIn(tag){ cutIn = { e: clearElem, t: 0, dur: 900, tag }; ultFx = null; sfxCutIn(); }
+function startCutIn(tag){ cutIn = { e: clearElem, t: 0, dur: 900, tag }; ultFx = null; sfxCutIn(); if (grid.some(r => r.includes("G"))) purgePending = true; }
 function drawCutInLayer(dt){
   const cv = $("cutin");
   if (!cutIn) { if (cv.dataset.on) { const c0 = cv.getContext("2d"); c0.setTransform(1, 0, 0, 1, 0, 0); c0.clearRect(0, 0, cv.width, cv.height); delete cv.dataset.on; } return; }   // reset the offset first so the whole screen is wiped
@@ -1772,7 +1836,7 @@ function fxRotate(){
 }
 
 /* ---------- 8-bit fireworks on level up ---------- */
-let rockets = [], sparks = [], banner = null, spinBanner = null, gearBanner = null;
+let rockets = [], sparks = [], banner = null, spinBanner = null, gearBanner = null, hitBanner = null, purgeBanner = null;
 function fireworks(lv){
   const W = COLS * cell, H = ROWS * cell;
   for (let i = 0; i < 5; i++) rockets.push({ x: W * (.15 + Math.random() * .7), y: H, vy: -(H * 1.3 + Math.random() * H * .3), delay: i * 280, c: FW[i % FW.length], fuse: 600 + Math.random() * 250 });
@@ -1781,7 +1845,7 @@ function fireworks(lv){
 function drawFx(dt){
   const W = COLS * cell, H = ROWS * cell, g = 4, s = dt / 1000;
   fxx.clearRect(0, 0, W, H);
-  if (!rockets.length && !sparks.length && !banner && !spinBanner && !gearBanner && !parts.length && !flashes.length && shakeT <= 0) return;
+  if (!rockets.length && !sparks.length && !banner && !spinBanner && !gearBanner && !hitBanner && !purgeBanner && !parts.length && !flashes.length && shakeT <= 0) return;
   // landing / rotation effects
   if (shakeT > 0) {
     shakeT -= dt;
@@ -1836,6 +1900,8 @@ function drawFx(dt){
     fxx.textAlign = "start";
   };
   if (gearBanner) { gearBanner.t -= dt; if (gearBanner.t <= 0) gearBanner = null; else drawBanner(gearBanner, H * .58, "#fcd83c", "#ff8a3c"); }
+  if (hitBanner) { hitBanner.t -= dt; if (hitBanner.t <= 0) hitBanner = null; else drawBanner(hitBanner, H * .7, "#ff5048", "#ffffff"); }
+  if (purgeBanner) { purgeBanner.t -= dt; if (purgeBanner.t <= 0) purgeBanner = null; else drawBanner(purgeBanner, H * .7, "#ffffff", "#fcd83c"); }
   if (spinBanner) { spinBanner.t -= dt; if (spinBanner.t <= 0) spinBanner = null; else drawBanner(spinBanner, H * .32, "#c070ff", "#7ae0ff"); }
   if (banner) {
     banner.t -= dt;
@@ -1890,6 +1956,15 @@ function sfxCutIn(){   // whoosh up into a held power chord
   [48, 55, 60, 64, 67, 72].forEach((m, i) => tone(N(m), i * .025, .1, "square", .05));
   [[60, .16], [67, .16], [72, .16]].forEach(([m, s]) => { tone(N(m), s, .5, "square", .06); tone(N(m - 12), s, .5, "triangle", .1); });
 }
+function sfxHurt(){   // a crunchy hit and a falling growl
+  const a = actx; if (!a || !soundOn) return;
+  const t = a.currentTime, n = a.createBufferSource(), ng = a.createGain();
+  n.buffer = getNoise(a); ng.gain.setValueAtTime(.16, t); ng.gain.exponentialRampToValueAtTime(.001, t + .22);
+  n.connect(ng).connect(a.destination); n.start(t); n.stop(t + .25);
+  [[50, 0], [46, .08], [41, .16]].forEach(([m, s]) => tone(N(m), s, .1, "square", .07));
+}
+function sfxBlock(){ [[88, 0], [93, .05]].forEach(([m, s]) => { tone(N(m), s, .12, "square", .06); tone(N(m - 24), s, .08, "triangle", .1); }); }
+function sfxPurge(){ [79, 84, 88, 91, 96, 100].forEach((m, i) => { tone(N(m), i * .045, .14, "square", .05); tone(N(m - 12), i * .045, .14, "triangle", .07); }); }
 function getNoise(a){
   if (!noiseBuf) {   // sample-and-hold white noise = crunchy NES-style noise channel
     noiseBuf = a.createBuffer(1, Math.floor(a.sampleRate * .4), a.sampleRate);
@@ -2155,7 +2230,9 @@ function frame(t){
       if (clearT > CLEAR_MS) {
         grid = grid.filter((_, i) => !clearing.includes(i));
         while (grid.length < ROWS) grid.unshift(Array(COLS).fill(null));
-        clearing = null; advance();
+        clearing = null;
+        if (purgePending) { purgePending = false; purgeGarbage(); }
+        advance();
       }
     } else if (cur) {
       const interval = Math.max(60, 800 * Math.pow(.85, level - 1));
@@ -2163,6 +2240,7 @@ function frame(t){
       else { dropAcc += dt; if (dropAcc >= interval) { cur.y++; cur.spin = false; dropAcc = 0; } }
       tickRepeat(dt);
     }
+    tickAttack(dt);
   }
   if (grid) drawBoard();
   updateLane(dt); drawFx(dt); drawCutInLayer(rdt); musicSync();
