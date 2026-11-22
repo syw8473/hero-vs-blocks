@@ -1056,6 +1056,7 @@ function updateLane(dt){
   if (ultFx) {
     ultFx.t += dt;
     if (foeBox) ultFx.box = { ...foeBox };
+    if (foe && foe.die > 0 && bigCut()) foe.die = Math.min(foe.die, Math.max(1, ultFx.delay + ULT_MS - ultFx.t));   // a felled monster bursts as the finisher ends, never after it
     if (ultFx.box && ultFx.t >= ultFx.delay && ultFx.t < ultFx.delay + ULT_MS) drawUltimate(lx, ultFx.e, ultFx.box, Math.min(1, (ultFx.t - ultFx.delay) / ULT_MS), W, H, hero.t);
     if (ultFx.t >= ultFx.dur) ultFx = null;
   }
@@ -1214,7 +1215,7 @@ function drawCutIn(ctx, W, H, elem, T, face, p, tag){
 }
 const HERO_ART = [1, 2, 3, 4, 5].map(n => { const im = new Image(); im.src = `art/hero${n}.jpg`; return im; });
 let cutIn = null;
-const ULT_MS = 800, STEP_BACK_MS = 220;
+const ULT_MS = 600, STEP_BACK_MS = 220;
 function startCutIn(tag){
   cutIn = { e: clearElem, t: 0, dur: 900, tag }; ultFx = null; sfxCutIn();
   // the cut-in names the move, and the bubble would hide the hero's sword-qi: only a boss kill is still called out
