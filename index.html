@@ -815,7 +815,7 @@ function paintUlt(c,ox,oy,px,tier,e,t,fit){
     c.moveTo(mx,my);c.arc(mx,my,R,s,s+Math.max(.01,sweep));c.closePath();if(show<1)c.clip();
     c.globalAlpha=t<.75?1:Math.max(0,(1-t)/.25);c.imageSmoothingEnabled=false;c.drawImage(f.img,x,y,w,hh);c.restore()};
   if(behind)fx();
-  HN.paintTo(c,ox,oy,px,tier,t<.1?'up':e==='dark'?'up':'mid',null);
+  HN.paintTo(c,ox,oy,px,tier,e==='dark'?(t<.05?'down':t<.12?'mid':'up'):(t<.06?'up':'mid'),null);
   if(!behind)fx();
 }
 /* SPRITES-END */
@@ -911,6 +911,7 @@ function spawnFoe(){
 const comboMs = n => 400 + 200 * (n - 1);
 function battleHit(n, leveled){
   if (foe && foe.pendingKill) { foe.pendingKill = false; foe.die = 650; foe.hp = foe.hpTarget; }   // a new clear before the last combo finished
+  if (ultFx) { ultFx.heroFree = true; ultFx.delay = Math.min(ultFx.delay, ultFx.t); }   // a new clear takes the hero back for its own combo
   hero.swings = n; hero.combo = comboMs(n); hero.swingMs = hero.combo / n; hero.atk = hero.combo; hero.lastSwing = -1; hero.sparked = false;
   // special-move name in a burst bubble, shown in the left third while the hero is over at the monster, for the whole combo
   laneMsg = { text: ELEMS[clearElem].name, ink: ELEMS[clearElem].ink, sub: n > 1 ? `×${n}` : "", bubble: true,
@@ -970,6 +971,7 @@ function drawBurst(m, W, H){
 let lastMob = -1, lastBoss = -1, seenBosses = new Set(), ultFx = null;
 function resetBattle(){ foe = null; nextFoeT = 0; kills = 0; lvKills = 0; laneMsg = null; laneParts = []; hero.down = false; hero.atk = 0; ultFx = null; lastMob = -1; lastBoss = -1; seenBosses.clear(); }
 
+const bigCut = () => !!ultFx && !ultFx.heroFree && ultFx.t >= ultFx.delay;
 function updateLane(dt){
   const W = laneW, H = laneH, s = dt / 1000, floor = H - 6;
   hero.t += dt;
@@ -1012,11 +1014,19 @@ function updateLane(dt){
       const reach = foeBox ? Math.max(homeX, foeBox.x - hw - 2) : homeX + 24, inT = sw * .3, outT = sw * .25;
       const k = el < inT ? el / inT : el > T - outT ? Math.max(0, (T - el) / outT) : 1;
       hx = Math.round((homeX + k * (reach - homeX)) / PX) * PX;
+      const n = el / sw;
+      if (n > .8 && n < hero.swings - .68) {   // between two cuts: hop back and wind up, so each cut reads on its own
+        const q = (n + .2) % 1;
+        if (q < .52) hx -= Math.round(Math.sin(Math.PI * q / .52) * 6) * PX;
+      }
       if (p < .3) hy -= Math.round(2 * p / .3) * PX;   // little jump as the sword goes up
       else if (p < .5) hy -= 2 * PX;
       spr = null;   // drawn below with the sword at its swing angle
       const cx = hx + SWORD_PIVOT[0] * PX, cy = hy + SWORD_PIVOT[1] * PX;
-      if (!ultFx) HN.paintTo(lx, hx, hy + PX, PX, heroTier, HN.poseAt(p), p > .24 ? clearElem : null, p < .6 ? 1 : Math.max(0, (.8 - p) / .2));
+      if (!bigCut()) {
+        const cutting = p >= .32 && p < .8;   // no sword-qi while winding up
+        HN.paintTo(lx, hx, hy + PX, PX, heroTier, p >= .8 && si < hero.swings - 1 ? "up" : HN.poseAt(p), cutting ? clearElem : null, p < .6 ? 1 : Math.max(0, (.8 - p) / .2));
+      }
       if (si !== hero.lastSwing) { hero.lastSwing = si; hero.sparked = false; }
       if (p > .44 && !hero.sparked) {   // the blade lands: shards burst off the crescent and the monster takes the hit
         hero.sparked = true; strokeLands();
@@ -1027,17 +1037,21 @@ function updateLane(dt){
         }
       }
     } else if (foe && foe.pendingKill) { foe.pendingKill = false; foe.hp = foe.hpTarget; foe.die = 650; }   // safety: never leave a kill hanging
-    if (ultFx) {   // the finisher: step in, loose the big sword-qi, step back
-      if (ultFx.reach == null) ultFx.reach = foeBox ? Math.max(homeX, Math.min(foeBox.x - hw - 2, homeX + 14 * PX)) : homeX + 14 * PX;
-      const u = Math.min(1, ultFx.t / ultFx.dur), k = Math.max(0, Math.min(1, u / .12, (1 - u) / .15));
-      paintUlt(lx, Math.round((homeX + k * (ultFx.reach - homeX)) / PX) * PX, floor - hh + PX, PX, heroTier, ultFx.e, u, true);
+    if (bigCut()) {   // the last cut: step to the middle, loose the big sword-qi, step back
+      if (ultFx.reach == null) {
+        ultFx.from = hx;
+        ultFx.reach = foeBox ? Math.max(homeX, Math.min(foeBox.x - hw - 2, homeX + 14 * PX)) : homeX + 14 * PX;
+      }
+      const u = Math.min(1, (ultFx.t - ultFx.delay) / ULT_MS), a = Math.min(1, u / .12), b = Math.max(0, (u - .85) / .15);
+      const ux = ultFx.from + a * (ultFx.reach - ultFx.from) + b * (homeX - ultFx.reach);
+      paintUlt(lx, Math.round(ux / PX) * PX, floor - hh + PX, PX, heroTier, ultFx.e, u, true);
     } else if (spr) lx.drawImage(spr, hx, hy, hw, hh);
   }
-  // T-spin ultimate: plays for 1.3 s over the monster (keeps its last spot if the monster falls mid-effect)
+  // T-spin ultimate: from the last cut, plays for 1.3 s over the monster (keeps its last spot if the monster falls mid-effect)
   if (ultFx) {
     ultFx.t += dt;
     if (foeBox) ultFx.box = { ...foeBox };
-    if (ultFx.box) drawUltimate(lx, ultFx.e, ultFx.box, Math.min(1, ultFx.t / ultFx.dur), W, H, hero.t);
+    if (ultFx.box && ultFx.t >= ultFx.delay) drawUltimate(lx, ultFx.e, ultFx.box, Math.min(1, (ultFx.t - ultFx.delay) / ULT_MS), W, H, hero.t);
     if (ultFx.t >= ultFx.dur) ultFx = null;
   }
   // bits
@@ -1194,6 +1208,7 @@ function drawCutIn(ctx, W, H, elem, T, face, p, tag){
 }
 const HERO_ART = [1, 2, 3, 4, 5].map(n => { const im = new Image(); im.src = `art/hero${n}.jpg`; return im; });
 let cutIn = null;
+const ULT_MS = 1300;
 function startCutIn(tag){
   cutIn = { e: clearElem, t: 0, dur: 900, tag }; ultFx = null; sfxCutIn();
   // the cut-in names the move, and the bubble would hide the hero's sword-qi: only a boss kill is still called out
@@ -1214,7 +1229,8 @@ function drawCutInLayer(dt){
   x.translate((vw - cw) / 2, cy - ch / 2);
   const art = HERO_ART[heroTier];
   drawCutIn(x, cw, ch, cutIn.e, TIERS[heroTier], art.complete && art.naturalWidth ? art : null, p, cutIn.tag, true);
-  if (cutIn.t >= cutIn.dur) { ultFx = { e: cutIn.e, t: 0, dur: 1300, box: null }; cutIn = null; }
+  if (cutIn.t >= cutIn.dur) { const wait = (hero.swings - 1) * hero.swingMs;   // n lines = n cuts: the ordinary ones first, the last is the big sword-qi
+    ultFx = { e: cutIn.e, t: 0, delay: wait, dur: wait + ULT_MS, box: null }; cutIn = null; }
 }
 /* ---------- T-spin ultimate: a big elemental finisher drawn over the monster during the combo ---------- */
 // t runs 0 → 1 across the combo; fb = the monster's box on the lane; everything snaps to the lane's pixel grid
