@@ -1038,7 +1038,7 @@ function updateLane(dt){
       else lx.drawImage(HERO.walk[(hero.t / 280 | 0) % 2], ux, floor - hh, hw, hh);
     } else if (spr) lx.drawImage(spr, hx, hy, hw, hh);
   }
-  // T-spin ultimate: from the last cut, plays for 1.3 s over the monster (keeps its last spot if the monster falls mid-effect)
+  // T-spin ultimate: from the last cut, plays for ULT_MS over the monster (keeps its last spot if the monster falls mid-effect)
   if (ultFx) {
     ultFx.t += dt;
     if (foeBox) ultFx.box = { ...foeBox };
@@ -1200,7 +1200,7 @@ function drawCutIn(ctx, W, H, elem, T, face, p, tag){
 }
 const HERO_ART = [1, 2, 3, 4, 5].map(n => { const im = new Image(); im.src = `art/hero${n}.jpg`; return im; });
 let cutIn = null;
-const ULT_MS = 1300, STEP_BACK_MS = 220;
+const ULT_MS = 800, STEP_BACK_MS = 220;
 function startCutIn(tag){
   cutIn = { e: clearElem, t: 0, dur: 900, tag }; ultFx = null; sfxCutIn();
   // the cut-in names the move, and the bubble would hide the hero's sword-qi: only a boss kill is still called out
