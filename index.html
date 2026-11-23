@@ -76,7 +76,8 @@ canvas{display:block}
 .pick{display:flex;gap:8px}
 .pick button{padding:7px 14px;font-size:14px;color:var(--clay-dim);background:transparent;border:1.5px solid #2f6064}
 .pick button[aria-pressed="true"]{color:#1b0f08;background:#fcd83c;border-color:#fcd83c;font-weight:700}
-.overlay[data-mode="pause"] .pick{display:none}
+.overlay[data-mode="pause"] .pick,.overlay[data-mode="pause"] .class-desc{display:none}
+.overlay p.class-desc{max-width:26ch;font-size:12px;line-height:1.5;color:#fcd83c}
 .overlay h2{font-family:var(--f-display);font-size:22px;margin:0;color:var(--clay)}
 .overlay p{margin:0;font-size:13px;color:var(--clay-dim);max-width:22ch}
 button{font:inherit;color:var(--clay);background:var(--shelf);border:1px solid #2f6064;border-radius:8px;cursor:pointer}
@@ -167,6 +168,7 @@ canvas{-webkit-tap-highlight-color:transparent}
           <button data-cls="hero" aria-pressed="true">戰士</button>
           <button data-cls="mage" aria-pressed="false">魔法師</button>
         </div>
+        <p id="class-desc" class="class-desc"></p>
         <button class="primary" id="start">開始冒險</button>
         <p id="best" class="sub"></p>
         <p id="tap-hint" class="sub" hidden>輕點畫面播放主題曲 ♪</p>
@@ -323,6 +325,13 @@ function tSpinKind(){   // 3-corner rule: "full", "mini" or "" — checked befor
   const front = [[0, 1], [1, 2], [2, 3], [3, 0]][cur.r];   // the two corners on the side the T points to
   return (c[front[0]] && c[front[1]]) || cur.kick === 4 ? "full" : "mini";
 }
+// class perks on a finisher (4 lines or a T-spin that clears): the warrior's sword-qi also cuts the rows just above,
+// the mage slows the falling pieces for 10 seconds
+const CLASS_PERK = {
+  hero: { extra: [1, 1, 1, 2, 3], desc: "四消／T-spin 時劍氣貫穿，順便消掉上方的磚塊：銅之勇者以前多消 1 行、銀之勇者 2 行、傳說勇者 3 行。" },
+  mage: { slow: [.8, .8, .8, .5, .25], desc: "四消／T-spin 時時間減緩 10 秒，磚塊落得更慢：星之法師以前變 80%、月之法師 50%、傳說賢者 25%。" } };
+const SLOW_MS = 10000;
+let slowT = 0, slowF = 1;
 function lock(){
   const spin = tSpinKind();
   for (let r = 0; r < cur.m.length; r++) for (let c = 0; c < cur.m[r].length; c++) {
@@ -335,9 +344,16 @@ function lock(){
   const full = [];
   grid.forEach((row, i) => { if (row.every(Boolean)) full.push(i); });
   if (full.length) {
-    const prevLevel = level;
-    clearing = full; clearT = 0;
-    pickElem(); elemBurst(full);
+    const prevLevel = level, ult = !!spin || full.length === 4;
+    let cut = full;
+    if (ult && heroClass === "hero") {   // sword-qi: the next rows above the cleared ones go too (bonus rows: no lines or score)
+      const extra = []; let r = Math.min(...full) - 1;
+      while (r >= 0 && extra.length < CLASS_PERK.hero.extra[heroTier]) { if (!full.includes(r) && grid[r].some(Boolean)) extra.push(r); r--; }
+      if (extra.length) { cut = full.concat(extra); gearBanner = { text: `劍氣貫穿！多消 ${extra.length} 行`, t: 2200 }; }
+    }
+    if (ult && heroClass === "mage") { slowT = SLOW_MS; slowF = CLASS_PERK.mage.slow[heroTier]; gearBanner = { text: `時間減緩！${Math.round(slowF * 100)}% 速度`, t: 2200 }; }
+    clearing = cut; clearT = 0;
+    pickElem(); elemBurst(cut);
     // the normal phase can't spill past its 10 lines: the boss must always be fought (extra lines still score)
     const add = lines < normalEnd(level) ? Math.min(full.length, normalEnd(level) - lines) : full.length;
     lines += add;
@@ -389,7 +405,7 @@ function reset(){
   grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   bag = []; queue = [nextFromBag(), nextFromBag(), nextFromBag()];
   holdType = null; canHold = true; score = 0; lines = 0; level = 1; setTier(0); armorUsed = false; cutIn = null;
-  dropAcc = 0; clearing = null; state = "play"; mStep = 0; trackLv = 0; sceneLv = 0;
+  dropAcc = 0; clearing = null; slowT = 0; state = "play"; mStep = 0; trackLv = 0; sceneLv = 0;
   resetBattle();
   $("overlay").hidden = true;
   advance(); updateHUD();
@@ -400,7 +416,7 @@ function togglePause(){
 }
 $("start").addEventListener("click", () => { if (state === "pause") togglePause(); else reset(); bc.focus?.(); });
 // warrior or mage: looks and attack animation only, the rules and scoring are the same; picked on the title / game-over screen
-function showClass(){ document.querySelectorAll("#class-pick button").forEach(b => b.setAttribute("aria-pressed", b.dataset.cls === heroClass)); }
+function showClass(){ document.querySelectorAll("#class-pick button").forEach(b => b.setAttribute("aria-pressed", b.dataset.cls === heroClass)); $("class-desc").textContent = CLASS_PERK[heroClass].desc; }
 document.querySelectorAll("#class-pick button").forEach(b => b.addEventListener("click", () => {
   if (state === "play" || state === "pause") return;
   heroClass = b.dataset.cls; showClass(); setTier(heroTier);
@@ -1991,6 +2007,13 @@ function fireworks(lv){
 function drawFx(dt){
   const W = COLS * cell, H = ROWS * cell, g = 4, s = dt / 1000;
   fxx.clearRect(0, 0, W, H);
+  if (slowT > 0 && state !== "over") {   // time-slow badge at the top of the board, with a draining bar
+    const bw = Math.min(W - 16, 150), bx = (W - bw) / 2, by = 6;
+    fxx.save(); fxx.globalAlpha = .6; fxx.fillStyle = "rgba(20,12,48,.7)"; fxx.fillRect(bx, by, bw, 22);   // see-through: the new piece spawns right under it
+    fxx.fillStyle = "#8fd8ff"; fxx.fillRect(bx, by + 19, bw * slowT / SLOW_MS, 3);
+    fxx.font = "bold 12px system-ui, sans-serif"; fxx.textAlign = "center"; fxx.textBaseline = "middle"; fxx.fillStyle = "#e8f6ff";
+    fxx.fillText(`⏳ 減速 ${Math.round(slowF * 100)}%　${Math.ceil(slowT / 1000)} 秒`, W / 2, by + 10); fxx.restore();
+  }
   if (!rockets.length && !sparks.length && !banner && !spinBanner && !gearBanner && !parts.length && !flashes.length && shakeT <= 0) return;
   // landing / rotation effects
   if (shakeT > 0) {
@@ -2360,6 +2383,7 @@ function frame(t){
   const rdt = Math.min(100, t - (last || t)); last = t;
   const dt = cutIn ? 0 : rdt;   // the cut-in freezes the action for a beat
   if (state === "play") {
+    if (slowT > 0) slowT = Math.max(0, slowT - dt);
     if (clearing) {
       clearT += dt;
       if (clearT > CLEAR_MS) {
@@ -2368,7 +2392,7 @@ function frame(t){
         clearing = null; advance();
       }
     } else if (cur) {
-      const interval = Math.max(60, 800 * Math.pow(.85, level - 1));
+      const interval = Math.max(60, 800 * Math.pow(.85, level - 1)) / (slowT > 0 ? slowF : 1);   // the mage's time-slow stretches the drop
       if (grounded()) { lockT += dt; if (lockT >= 500) lock(); }
       else { dropAcc += dt; if (dropAcc >= interval) { cur.y++; cur.spin = false; dropAcc = 0; } }
       tickRepeat(dt);
