@@ -923,16 +923,26 @@ function spawnFoe(){
 }
 // clearing n lines chains n strokes; the whole combo lasts 0.4 / 0.6 / 0.8 / 1.0 s, so each stroke gets quicker as the combo grows
 const comboMs = n => 400 + 200 * (n - 1);
+const MAGE_CAST_MS = 760, ORB_SIZE = [.5, .7, .9, 1.1];   // mage: one cast; orb scale (lane px per art px ÷ PX) for 1 / 2 / 3 / 4 lines
+function orbOf(S){   // the small spell with a 1-art-pixel white rim, built once, so it pops out over the callout bubble
+  if (S.out || !S.img.complete || !S.img.naturalWidth) return S.out || null;
+  const c = document.createElement("canvas"); c.width = S.w + 2; c.height = S.h + 2; const g = c.getContext("2d");
+  for (let dy = 0; dy <= 2; dy++) for (let dx = 0; dx <= 2; dx++) if (dx !== 1 || dy !== 1) g.drawImage(S.img, dx, dy);
+  g.globalCompositeOperation = "source-in"; g.fillStyle = "#ffffff"; g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = "source-over"; g.drawImage(S.img, 1, 1);
+  return S.out = c;
+}
 function battleHit(n, leveled){
   if (foe && foe.pendingKill) { foe.pendingKill = false; foe.die = 650; foe.hp = foe.hpTarget; }   // a new clear before the last combo finished
   if (ultFx) { ultFx.heroFree = true; ultFx.delay = Math.min(ultFx.delay, ultFx.t); }   // a new clear takes the hero back for its own combo
-  hero.swings = n; hero.combo = comboMs(n); hero.swingMs = hero.combo / n; hero.atk = hero.combo; hero.lastSwing = -1; hero.sparked = false;
+  const mage = heroClass === "mage";   // the mage fires ONE spell whose size grows with the lines; the warrior chains n strokes
+  hero.swings = mage ? 1 : n; hero.power = n; hero.combo = mage ? MAGE_CAST_MS : comboMs(n); hero.swingMs = hero.combo / hero.swings; hero.atk = hero.combo; hero.lastSwing = -1; hero.sparked = false;
   // special-move name in a burst bubble, shown in the left third while the hero is over at the monster, for the whole combo
   laneMsg = { text: moveName(clearElem), ink: ELEMS[clearElem].ink, sub: n > 1 ? `×${n}` : "", bubble: true,
     t: Math.max(420, hero.combo * .85 - 90), delay: 90, age: 0, seed: Math.random() * 1e9 | 0 };
   if (!foe || foe.die > 0) return;
   foe.hpTarget = (leveled || !foe.boss) ? 0 : Math.max(0, stageEnd(level) - lines);
-  foe.hitsLeft = n;   // HP drops one pip per stroke; the monster falls on the last stroke
+  foe.hitsLeft = hero.swings;   // HP drops one pip per stroke (the mage's single spell takes all n at once); the monster falls on the last stroke
   if (foe.hpTarget <= 0) {
     foe.pendingKill = true; kills++;
     if (leveled) lvKills = 0; else lvKills++;
@@ -1268,20 +1278,20 @@ function mageLane(dt, homeX, hw, floor){
     hero.atk -= dt; lift = 0;
     const T = hero.combo, sw = hero.swingMs, el = T - Math.max(0, hero.atk), si = Math.min(hero.swings - 1, el / sw | 0), p = Math.min(1, (el - si * sw) / sw);
     const fin = !!ultFx && !ultFx.heroFree && si === hero.swings - 1;
-    fr = p < .22 || p > .9 ? M.ready : M.cast;
+    fr = p < .18 || p > .9 ? M.ready : M.cast;
     if (si !== hero.lastSwing) { hero.lastSwing = si; hero.sparked = false; }
     if (fin) { if (p > .44 && !hero.sparked) { hero.sparked = true; strokeLands(); } }
-    else if (p >= .22 && !hero.sparked) {   // the spell shoots straight and fast from the mage's middle and lands as it arrives
-      const q = Math.min(1, (p - .22) / .3), S = MAGE.small[clearElem];
+    else if (p >= .18 && !hero.sparked) {   // one spell shoots straight from the mage's middle (about a third of a second) and lands as it arrives
+      const q = Math.min(1, (p - .18) / .45), S = MAGE.small[clearElem], O = orbOf(S);
       const from = { x: feet + 4 * k, y: floor - M.idle.h * k * .5 };
       const tx = foeBox ? foeBox.x + foeBox.fw * .4 : laneW * 5 / 6, ty = foeBox ? foeBox.y + foeBox.fh * .5 : floor - 14 * PX;
-      const c = PX * .55, w = S.w * c, h = S.h * c;
+      const c = PX * ORB_SIZE[Math.min(4, hero.power || 1) - 1], w = (S.w + 2) * c, h = (S.h + 2) * c;   // bigger orb for more lines
       const x = from.x + (tx - from.x) * q - w / 2, y = from.y + (ty - from.y) * q - h / 2;
-      if (S.img.complete) hero.spell = () => lx.drawImage(S.img, Math.round(x), Math.round(y), Math.round(w), Math.round(h));   // drawn after the move-name bubble
+      if (O) hero.spell = () => { lx.imageSmoothingEnabled = false; lx.drawImage(O, Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };   // drawn after the move-name bubble
       if (q >= 1) {
         hero.sparked = true; strokeLands();
         const C = BLADES[clearElem].arc;
-        for (let i = 0; i < 18; i++) { const a = Math.random() * Math.PI * 2, v = 50 + Math.random() * 110; laneParts.push({ x: tx, y: ty, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 50, c: C[i % 3], life: 320 + Math.random() * 240 }); }
+        for (let i = 0; i < 12 + 6 * (hero.power || 1); i++) { const a = Math.random() * Math.PI * 2, v = 50 + Math.random() * 110; laneParts.push({ x: tx, y: ty, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 50, c: C[i % 3], life: 320 + Math.random() * 240 }); }
       }
     }
   } else if (foe && foe.pendingKill) { foe.pendingKill = false; foe.hp = foe.hpTarget; foe.die = 650; }   // never leave a kill hanging
