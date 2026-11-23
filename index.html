@@ -938,7 +938,7 @@ function spawnFoe(){
 }
 // clearing n lines chains n strokes; the whole combo lasts 0.4 / 0.6 / 0.8 / 1.0 s, so each stroke gets quicker as the combo grows
 const comboMs = n => 400 + 200 * (n - 1);
-const MAGE_CAST_MS = 760, ORB_SIZE = [.5, .7, .9, 1.1];   // mage: one cast; orb scale (lane px per art px ÷ PX) for 1 / 2 / 3 / 4 lines
+const MAGE_CAST_MS = 760, ORB_FROM = .18, ORB_LAND = .63, ORB_SIZE = [.5, .7, .9, 1.1];   // mage: one cast; orb scale (lane px per art px ÷ PX) for 1 / 2 / 3 / 4 lines
 function orbOf(S){   // the small spell with a 1-art-pixel white rim, built once, so it pops out over the callout bubble
   if (S.out || !S.img.complete || !S.img.naturalWidth) return S.out || null;
   const c = document.createElement("canvas"); c.width = S.w + 2; c.height = S.h + 2; const g = c.getContext("2d");
@@ -1277,7 +1277,8 @@ function drawCutInLayer(dt){
   x.translate((vw - cw) / 2, cy - ch / 2);
   const art = (heroClass === "mage" ? MAGE_ART : HERO_ART)[heroTier];
   drawCutIn(x, cw, ch, cutIn.e, { name: tierName(heroTier) }, art.complete && art.naturalWidth ? art : null, p, cutIn.tag, true);
-  if (cutIn.t >= cutIn.dur) { const wait = (hero.swings - 1) * hero.swingMs;   // n lines = n cuts: the ordinary ones first, the last is the big sword-qi
+  if (cutIn.t >= cutIn.dur) { const wait = heroClass === "mage" ? MAGE_CAST_MS * ORB_LAND   // mage: the orb flies first, the finisher bursts where it hits
+      : (hero.swings - 1) * hero.swingMs;   // warrior: n lines = n cuts: the ordinary ones first, the last is the big sword-qi
     ultFx = { e: cutIn.e, t: 0, delay: wait, dur: wait + ULT_MS + STEP_BACK_MS, box: null }; cutIn = null; }
 }
 /* ---------- T-spin ultimate: a big elemental finisher drawn over the monster during the combo ---------- */
@@ -1293,14 +1294,12 @@ function mageLane(dt, homeX, hw, floor){
   if (hero.atk > 0) {
     hero.atk -= dt; lift = 0;
     const T = hero.combo, sw = hero.swingMs, el = T - Math.max(0, hero.atk), si = Math.min(hero.swings - 1, el / sw | 0), p = Math.min(1, (el - si * sw) / sw);
-    const fin = !!ultFx && !ultFx.heroFree && si === hero.swings - 1;
-    fr = p < .18 || p > .9 ? M.ready : M.cast;
+    fr = p < ORB_FROM || p > .9 ? M.ready : M.cast;
     if (si !== hero.lastSwing) { hero.lastSwing = si; hero.sparked = false; }
-    if (fin) { if (p > .44 && !hero.sparked) { hero.sparked = true; strokeLands(); } }
-    else if (p >= .18 && !hero.sparked) {   // one spell shoots straight from the mage's middle (about a third of a second) and lands as it arrives
-      const q = Math.min(1, (p - .18) / .45), S = MAGE.small[clearElem], O = orbOf(S);
+    if (p >= ORB_FROM && !hero.sparked) {   // one orb flies level from the mage's middle (about a third of a second); on a finisher the big spell bursts as it lands
+      const q = Math.min(1, (p - ORB_FROM) / (ORB_LAND - ORB_FROM)), S = MAGE.small[clearElem], O = orbOf(S);
       const from = { x: feet + 4 * k, y: floor - M.idle.h * k * .5 };
-      const tx = foeBox ? foeBox.x + foeBox.fw * .4 : laneW * 5 / 6, ty = foeBox ? foeBox.y + foeBox.fh * .5 : floor - 14 * PX;
+      const tx = foeBox ? foeBox.x + foeBox.fw * .4 : laneW * 5 / 6, ty = from.y;   // level flight
       const c = PX * ORB_SIZE[Math.min(4, hero.power || 1) - 1], w = (S.w + 2) * c, h = (S.h + 2) * c;   // bigger orb for more lines
       const x = from.x + (tx - from.x) * q - w / 2, y = from.y + (ty - from.y) * q - h / 2;
       if (O) hero.spell = () => { lx.imageSmoothingEnabled = false; lx.drawImage(O, Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };   // drawn after the move-name bubble
