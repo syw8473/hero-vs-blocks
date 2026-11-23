@@ -1,9 +1,10 @@
 // Offline support: the game files are stored on the device on first visit,
 // Google Fonts are cached as they load, so the game opens with no network afterwards.
-const VERSION = "hero-vs-blocks-v33";   // bump on every release so phones pick up the new game
+const VERSION = "hero-vs-blocks-v34";   // bump on every release so phones pick up the new game
 const CORE = ["./", "./index.html", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/maskable-512.png", "./icons/apple-touch-icon.png",
-  "./art/hero1.jpg", "./art/hero2.jpg", "./art/hero3.jpg", "./art/hero4.jpg", "./art/hero5.jpg"];
+  "./art/hero1.jpg", "./art/hero2.jpg", "./art/hero3.jpg", "./art/hero4.jpg", "./art/hero5.jpg",
+  "./art/mage1.png", "./art/mage2.png", "./art/mage3.png", "./art/mage4.png", "./art/mage5.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
