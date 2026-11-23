@@ -63,7 +63,11 @@ canvas{display:block}
 .pick button{padding:7px 14px;font-size:14px;color:var(--clay-dim);background:transparent;border:1.5px solid #2f6064}
 .pick button[aria-pressed="true"]{color:#1b0f08;background:#fcd83c;border-color:#fcd83c;font-weight:700}
 .overlay[data-mode="pause"] .pick,.overlay[data-mode="pause"] .class-desc{display:none}
-.overlay p.class-desc{max-width:26ch;font-size:12px;line-height:1.5;color:#fcd83c}
+.class-desc{font-size:12px;line-height:1.5;color:#fcd83c}
+.overlay .class-desc p{max-width:none;white-space:nowrap;margin:0 0 3px;font-size:12px;color:#fcd83c;font-weight:700;text-align:center}
+.class-desc ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:auto auto;column-gap:10px;justify-content:center;text-align:left;color:var(--clay)}
+.class-desc li{display:contents}
+.class-desc li span:first-child::before{content:"・";color:#fcd83c}
 .overlay h2{font-family:var(--f-display);font-size:22px;margin:0;color:var(--clay)}
 .overlay p{margin:0;font-size:13px;color:var(--clay-dim);max-width:22ch}
 button{font:inherit;color:var(--clay);background:var(--shelf);border:1px solid #2f6064;border-radius:8px;cursor:pointer}
@@ -154,7 +158,7 @@ canvas{-webkit-tap-highlight-color:transparent}
           <button data-cls="hero" aria-pressed="true">戰士</button>
           <button data-cls="mage" aria-pressed="false">魔法師</button>
         </div>
-        <p id="class-desc" class="class-desc"></p>
+        <div id="class-desc" class="class-desc"></div>
         <button class="primary" id="start">開始冒險</button>
         <p id="best" class="sub"></p>
         <p id="tap-hint" class="sub" hidden>輕點畫面播放主題曲 ♪</p>
@@ -314,8 +318,8 @@ function tSpinKind(){   // 3-corner rule: "full", "mini" or "" — checked befor
 // class perks on a finisher (4 lines or a T-spin that clears): the warrior's sword-qi also cuts the rows just above,
 // the mage slows the falling pieces for 10 seconds
 const CLASS_PERK = {
-  hero: { extra: [1, 1, 1, 2, 3], desc: "四消／T-spin 時劍氣貫穿，順便消掉上方的磚塊：銅之勇者以前多消 1 行、銀之勇者 2 行、傳說勇者 3 行。" },
-  mage: { slow: [.8, .8, .8, .5, .25], desc: "四消／T-spin 時時間減緩 10 秒，磚塊落得更慢：星之法師以前變 80%、月之法師 50%、傳說賢者 25%。" } };
+  hero: { extra: [1, 1, 1, 2, 3], lead: "四消／T-spin 時多消上方磚塊", rows: [["銅之勇者以前", "多消 1 行"], ["銀之勇者", "多消 2 行"], ["傳說勇者", "多消 3 行"]] },
+  mage: { slow: [.8, .8, .8, .5, .25], lead: "四消／T-spin 時磚塊減速 10 秒", rows: [["星之法師以前", "速度 80%"], ["月之法師", "速度 50%"], ["傳說賢者", "速度 25%"]] } };
 const SLOW_MS = 10000;
 let slowT = 0, slowF = 1;
 function lock(){
@@ -402,7 +406,10 @@ function togglePause(){
 }
 $("start").addEventListener("click", () => { if (state === "pause") togglePause(); else reset(); bc.focus?.(); });
 // warrior or mage: looks and attack animation only, the rules and scoring are the same; picked on the title / game-over screen
-function showClass(){ document.querySelectorAll("#class-pick button").forEach(b => b.setAttribute("aria-pressed", b.dataset.cls === heroClass)); $("class-desc").textContent = CLASS_PERK[heroClass].desc; }
+function showClass(){ document.querySelectorAll("#class-pick button").forEach(b => b.setAttribute("aria-pressed", b.dataset.cls === heroClass)); const P = CLASS_PERK[heroClass], box = $("class-desc"); box.replaceChildren();
+  const lead = document.createElement("p"); lead.textContent = P.lead; const ul = document.createElement("ul");
+  P.rows.forEach(([who, what]) => { const li = document.createElement("li"); [who, what].forEach(t => { const sp = document.createElement("span"); sp.textContent = t; li.append(sp); }); ul.append(li); });
+  box.append(lead, ul); }
 document.querySelectorAll("#class-pick button").forEach(b => b.addEventListener("click", () => {
   if (state === "play" || state === "pause") return;
   heroClass = b.dataset.cls; showClass(); setTier(heroTier);
