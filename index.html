@@ -612,9 +612,9 @@ const EVIL_PAL = { k:"#d8d8e8", K:"#ffffff", q:"#ff2040", s:"#b8a8c8", S:"#7a6a8
   a:"#4a1a5a", A:"#280a32", y:"#7a7a88", Y:"#44444f", d:"#2e1a38", w:"#ff4060", W:"#901830",
   c:"#6a1a7a", C:"#3a0a48", n:"#3a2a2a", b:"#2e2234", B:"#160c1a" };
 BOSSES.push(["黑暗勇者", EVIL_PAL, HERO_ROWS, true]);
-const darkHero = () => HN.evilSprite(TIERS.length - 1);   // the Dark Hero comes on stages 10, 20, ... when the player is always the Legend tier, so he is the Legend gone dark
+const darkHero = tier => HN.evilSprite(tier);   // the Dark Hero is the player's own current tier gone dark (Bronze on stage 5, Legend from stage 10)
 function foeSprite(def, pal){
-  if (def[3]) return darkHero();
+  if (def[3]) return darkHero(heroTier);
   return def[3] ? makeSprite(def[2].map(r => [...r].reverse().join("")), pal, false, true) : makeSprite(def[2], pal, true);
 }
 // game over: the hero turns into an upright coffin — gold rim and cross on a blue lid
@@ -957,13 +957,13 @@ let foe = null, foeBox = null, nextFoeT = 0, kills = 0, lvKills = 0, laneMsg = n
 function spawnFoe(){
   const boss = lines >= normalEnd(level), remain = stageEnd(level) - lines;
   let def, shift = 0, prefix = "";
-  if (boss) {   // every 10th stage brings the Dark Hero; otherwise a random boss (not the last one); repeat visits get a random colour
+  if (boss) {   // every 5th stage brings the Dark Hero; otherwise a random boss (not the last one); repeat visits get a random colour
     const dark = BOSSES.length - 1;
     let bi;
-    if (level % 10 === 0) bi = dark;
+    if (level % 5 === 0) bi = dark;
     else do bi = Math.random() * dark | 0; while (bi === lastBoss);
     lastBoss = bi; def = BOSSES[bi];
-    if (seenBosses.has(bi)) shift = 30 + Math.random() * 300;
+    if (seenBosses.has(bi) && bi !== dark) shift = 30 + Math.random() * 300;
     seenBosses.add(bi);
   } else {     // the very first foe of a run is the jelly; after that any of the 30, never twice in a row
     let mi;
