@@ -599,8 +599,33 @@ const EVIL_PAL = { k:"#d8d8e8", K:"#ffffff", q:"#ff2040", s:"#b8a8c8", S:"#7a6a8
   c:"#6a1a7a", C:"#3a0a48", n:"#3a2a2a", b:"#2e2234", B:"#160c1a" };
 BOSSES.push(["黑暗勇者", EVIL_PAL, HERO_ROWS, true]);
 const darkHero = tier => HN.evilSprite(tier);   // the Dark Hero is the player's own current tier gone dark (Bronze on stage 5, Legend from stage 10)
+function darkMage(tier){   // the mage's dark twin: her current-tier standing art, facing left, silver hair, ashen skin, red eyes, crimson trim, violet robes
+  const M = MAGE.tiers[tier], f = M.idle;
+  if (!f.img.complete || !f.img.naturalWidth) return null;
+  const w = f.w, h = f.h, cv = document.createElement("canvas"); cv.width = w; cv.height = h; const c = cv.getContext("2d");
+  c.translate(w, 0); c.scale(-1, 1); c.drawImage(f.img, 0, 0);
+  const im = c.getImageData(0, 0, w, h), d = im.data, kind = new Uint8Array(w * h);   // 1 skin, 2 dark
+  const hex = (r, g, b) => "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
+  const set = (i, col) => { d[i] = parseInt(col.slice(1, 3), 16); d[i + 1] = parseInt(col.slice(3, 5), 16); d[i + 2] = parseInt(col.slice(5, 7), 16); };
+  for (let p = 0; p < w * h; p++) {
+    const i = p * 4; if (!d[i + 3]) continue;
+    const [hu, sa, l] = toHsl(hex(d[i], d[i + 1], d[i + 2]));
+    if (l < .12) { kind[p] = 2; continue; }                                                        // outline and pupils
+    if (hu <= 34 && l >= .58 && sa > .25) { kind[p] = 1; set(i, fromHsl(285, .14, .55 + (l - .58) * .7)); }   // skin: ashen lilac
+    else if (hu <= 45 && l < .58 && sa > .15) set(i, fromHsl(250, .08, .5 + l * .7));            // hair and wooden staff: silver
+    else if (hu > 34 && hu <= 62 && sa > .45 && l >= .4) set(i, fromHsl(350, .85, .32 + l * .3)); // gold trim: crimson
+    else set(i, fromHsl(282, Math.min(.6, .25 + sa * .35), .1 + l * .42));                        // robes, hat, gems: violet
+  }
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {   // dark pixels framed by skin are the eyes: glow red
+    const p = y * w + x; if (kind[p] !== 2) continue;
+    if (kind[p - 1] === 1 && kind[p + 1] === 1 && kind[p + w] === 1) set(p * 4, "#ff2040");
+  }
+  c.putImageData(im, 0, 0);
+  cv.k = M.k;   // drawn at the mage's own scale, like the player's mage
+  return cv;
+}
 function foeSprite(def, pal){
-  if (def[3]) return darkHero(heroTier);
+  if (def[3]) return (heroClass === "mage" && darkMage(heroTier)) || darkHero(heroTier);
   return def[3] ? makeSprite(def[2].map(r => [...r].reverse().join("")), pal, false, true) : makeSprite(def[2], pal, true);
 }
 // game over: the hero turns into an upright coffin — gold rim and cross on a blue lid
@@ -960,7 +985,7 @@ function spawnFoe(){
   const pal = palette(def[1], shift);
   if (boss && shift) prefix = HUE_NAMES[Math.round(toHsl(pal.a)[0] / 45) % 8] + "・";
   const spr = foeSprite(def, pal);
-  foe = { name: prefix + def[0], boss, hp: boss ? remain : 1, max: boss ? remain : 1, spr, white: whiteOf(spr), pal, enter: 1, hit: 0, die: 0, t: 0 };
+  foe = { name: prefix + (def[3] && spr.k ? "黑暗魔法師" : def[0]), boss, hp: boss ? remain : 1, max: boss ? remain : 1, spr, white: whiteOf(spr), pal, enter: 1, hit: 0, die: 0, t: 0 };
   if (boss && state === "play") { laneMsg = { text: "魔王出現！", t: 1300 }; sfxBoss(); }
 }
 // clearing n lines chains n strokes; the whole combo lasts 0.4 / 0.6 / 0.8 / 1.0 s, so each stroke gets quicker as the combo grows
@@ -1050,7 +1075,7 @@ function updateLane(dt){
   foeBox = null;
   if (foe) {
     foe.t += dt; foe.enter = Math.max(0, foe.enter - dt / 450); if (foe.hit > 0) foe.hit -= dt;
-    const fw = foe.spr.width * PX, fh = foe.spr.height * PX;
+    const fw = Math.round(foe.spr.width * PX * (foe.spr.k || 1)), fh = Math.round(foe.spr.height * PX * (foe.spr.k || 1));
     const homeFoe = Math.min(W - fw - 4, Math.round((W * 5 / 6 - fw / 2) / PX) * PX);   // centre of the right third
     let x = homeFoe + Math.round(foe.enter * (W - homeFoe + 8));
     if (foe.hit > 0) x += Math.round((foe.hit / 280) * 3) * PX;   // knock-back
